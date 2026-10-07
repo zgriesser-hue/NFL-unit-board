@@ -40,6 +40,7 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY")   # optional free-tier key: captur
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 M, LAM, K_QB = 12, 0.5, 150          # prior = M games of last season's average x LAM; QB shrinkage (dropbacks)
 TEST_SEASONS = [2023, 2024, 2025]
+USE_CONTINUITY = True              # True = add pregame roster-continuity features (share of recent snaps from last year's players)
 QB_REPLACEMENT_PRIOR = True          # True = a QB with little tape starts near what a new QB usually produces, not near average
 FORCE_REBUILD = False                # True = ignore every cache
 MAX_AGE_DAYS = 3                     # caches older than this are rebuilt
@@ -369,10 +370,49 @@ INJ = [("qb_inj", "QB", ["QB"]), ("ol_inj", "O-line", ["OL"]), ("sk_inj", "Skill
        ("fr_inj", "Front", ["DL", "LB"]), ("cov_inj", "Coverage", ["DB"])]
 UNITS = ["QB", "O-line", "Skill", "Front", "Coverage"]
 CTX = ["home_flag", "rest_diff"]
+UNIT_POS = {"O-line": ["T", "G", "C", "OT", "OG", "OL"], "Skill": ["WR", "TE", "RB", "FB"],
+            "Front": ["DE", "DT", "NT", "DL", "LB", "ILB", "OLB", "MLB", "EDGE"],
+            "Coverage": ["CB", "S", "FS", "SS", "DB"]}
+# roster continuity: share of the snaps played so far this season by players who were on the same team last season
+CONT_DEF = [("cont_oline", "O-line", UNIT_POS["O-line"], "offense_snaps"),
+            ("cont_skill", "Skill", UNIT_POS["Skill"], "offense_snaps"),
+            ("cont_front", "Front", UNIT_POS["Front"], "defense_snaps"),
+            ("cont_cov", "Coverage", UNIT_POS["Coverage"], "defense_snaps")]
+CONT_NAMES = [c[0] for c in CONT_DEF] if USE_CONTINUITY else []
 unit_of = {n: u for n, u, *_ in SPEC}
 unit_of.update({n: u for n, u, _ in INJ})
-FEATS_U = [s[0] for s in SPEC] + [i[0] for i in INJ]
+unit_of.update({n: u for n, u, *_ in CONT_DEF if n in CONT_NAMES})
+FEATS_U = [s[0] for s in SPEC] + [i[0] for i in INJ] + CONT_NAMES
 ALL = FEATS_U + CTX
+
+def build_continuity(snap):
+    """Per (season, team, week, unit): continuity using only games BEFORE that week (cumulative)."""
+    pid = "pfr_player_id" if "pfr_player_id" in snap else "player"
+    sn = snap[snap["game_type"] == "REG"] if "game_type" in snap else snap
+    sn = sn[["season", "week", "team", pid, "position", "offense_snaps", "defense_snaps"]].dropna(subset=["season", "week"]).copy()
+    sn["season"], sn["week"] = sn["season"].astype(int), sn["week"].astype(int)
+    prev = sn[["season", "team", pid]].drop_duplicates()
+    prev["season"] += 1
+    prev["was_here"] = 1.0
+    sn = sn.merge(prev, on=["season", "team", pid], how="left")
+    sn["was_here"] = sn["was_here"].fillna(0.0)
+    out = {}
+    for name, u, pos, col in CONT_DEF:
+        x = sn[sn["position"].isin(pos)].copy()
+        x["snaps"] = x[col].fillna(0.0)
+        x["kept"] = x["snaps"] * x["was_here"]
+        w = x.groupby(["season", "team", "week"])[["snaps", "kept"]].sum().reset_index().sort_values(["season", "team", "week"])
+        w[["snaps", "kept"]] = w.groupby(["season", "team"])[["snaps", "kept"]].cumsum()
+        w["cont"] = w["kept"] / w["snaps"].replace(0, np.nan)
+        out[name] = w[["season", "team", "week", "cont"]].sort_values("week").reset_index(drop=True)
+    return out
+
+def cont_lookup(tab, seasons, weeks, teams):
+    """Continuity as of the last game BEFORE the given week (NaN if none, e.g. week 1)."""
+    left = pd.DataFrame({"season": np.asarray(seasons).astype(int), "week": np.asarray(weeks).astype(int),
+                         "team": np.asarray(teams), "i": np.arange(len(teams))}).sort_values("week")
+    m = pd.merge_asof(left, tab, on="week", by=["season", "team"], allow_exact_matches=False, direction="backward")
+    return m.sort_values("i")["cont"].values
 
 key = pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])
 def rating_hist(col):
@@ -386,6 +426,8 @@ def rating_hist(col):
     return pd.Series((S + M * LAM * prior) / (N + M), index=key)
 
 log("building the training frame ...")
+SNAP = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
+CONT_TAB = build_continuity(SNAP) if USE_CONTINUITY else {}
 F = games[games["is_playoff"] == 0].copy().reset_index(drop=True)
 mi = lambda c: pd.MultiIndex.from_arrays([F["game_id"], F[c]])
 F["home_flag"] = 1 - F["neutral_site"]
@@ -405,6 +447,11 @@ for side in ("home", "away"):
     F = F.merge(bb, on=["season", "week", f"{side}_team"], how="left")
 for name, unit, groups in INJ:                                   # + = home LESS hurt than away
     F[name] = -sum(F[f"home_{g}"].fillna(0.0) - F[f"away_{g}"].fillna(0.0) for g in groups if f"home_{g}" in F)
+for name, unit, pos, col in CONT_DEF:                                # + = home lineup MORE continuous than away's
+    if name in CONT_NAMES:
+        h = cont_lookup(CONT_TAB[name], F["season"], F["week"], F["home_team"])
+        a = cont_lookup(CONT_TAB[name], F["season"], F["week"], F["away_team"])
+        F[name] = h - a
 F[ALL] = F[ALL].fillna(0.0)
 F["qb_chg"] = (QB_CHG.reindex(mi("home_team")).fillna(False).astype(bool).values
                | QB_CHG.reindex(mi("away_team")).fillna(False).astype(bool).values)
@@ -426,6 +473,8 @@ for s in TEST_SEASONS:
     te["pred"] = te[ALL].values @ fit(tr, ALL).values
     _noswap = [c for c in ALL if c != "qb_swap"]
     te["pred0"] = te[_noswap].values @ fit(tr, _noswap).values
+    _nocont = [c for c in ALL if c not in CONT_NAMES]
+    te["pred_nocont"] = te[_nocont].values @ fit(tr, _nocont).values
     rows.append(te)
 r = pd.concat(rows)
 r = r[r["game_id"].isin(ok) & r["home_margin"].notna()]
@@ -438,9 +487,40 @@ if len(r):
     if len(_c):
         print(f"  games where a team changed starters ({len(_c)}): with qb_swap {mae(_c['pred'], _c['home_margin']):.3f} | "
               f"without {mae(_c['pred0'], _c['home_margin']):.3f} | closing market {mae(_c['mkt_close'], _c['home_margin']):.3f}")
+    if CONT_NAMES:
+        _e = r[r["week"] <= 6]
+        print(f"  roster continuity: all games with {mae(r['pred'], r['home_margin']):.3f} | without {mae(r['pred_nocont'], r['home_margin']):.3f}"
+              f" ; weeks 1-6 ({len(_e)}) with {mae(_e['pred'], _e['home_margin']):.3f} | without {mae(_e['pred_nocont'], _e['home_margin']):.3f}")
     print(f"  all games: with qb_swap {mae(r['pred'], r['home_margin']):.3f} | without {mae(r['pred0'], r['home_margin']):.3f}")
 else:
     print("\n(no market lines available: skipped the out-of-sample check)")
+
+# ---- the opener: Monday-noon line from game_lines.csv (only meaningful when that file is present)
+if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
+    hm = r["home_margin"]
+    print(f"\nVS THE OPENER ({len(r)} games). Average miss: opener {mae(r['mkt_open'], hm):.3f} | close {mae(r['mkt_close'], hm):.3f} "
+          f"| unit model {mae(r['pred'], hm):.3f}")
+    for label, col in (("opener", "mkt_open"), ("close", "mkt_close")):
+        edge, cover = r["pred"] - r[col], hm - r[col]
+        print(f"  betting the model side against the {label} (break-even at -110 is 52.4%):")
+        for thr in [0, 1, 2, 3, 4]:
+            sel = (edge.abs() >= thr) & (cover != 0)
+            n = int(sel.sum())
+            if n == 0:
+                continue
+            wr = float((np.sign(edge[sel]) == np.sign(cover[sel])).mean())
+            print(f"    |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {wr * 100 / 110 - (1 - wr):+.1%}")
+    mv = r["mkt_close"] - r["mkt_open"]                          # how the line moved from open to close (home +)
+    lean = r["pred"] - r["mkt_open"]                             # which way the model disagreed with the opener
+    big = (mv.abs() >= 1) & (lean.abs() >= 0.5)
+    if big.sum() > 30:
+        agree = float((np.sign(lean[big]) == np.sign(mv[big])).mean())
+        print(f"  line movement: when the line moved 1+ points, the model had leaned that way {agree:.1%} of the time "
+              f"({int(big.sum())} games, +/- {np.sqrt(0.25 / big.sum()):.1%}); correlation of model-vs-open with the move: "
+              f"{float(np.corrcoef(lean, mv)[0, 1]):+.3f}")
+    keep = ["game_id", "season", "week", "home_team", "away_team", "home_margin", "pred", "mkt_open", "mkt_close"]
+    r[[c for c in keep if c in r]].to_csv(f"{OUT}/oos_predictions.csv", index=False)
+    log(f"saved oos_predictions.csv ({len(r)} test games) to {OUT}")
 
 # ---- final weights on every completed game
 done = F[F["home_margin"].notna()]
@@ -471,10 +551,6 @@ if len(_mk) > 300:
 # ---- diagnostic: does roster turnover explain what the market knows and our stats don't?
 # turnover = share of a team's snaps (by unit) played by players who were NOT on that team last season.
 # Uses whole-season snaps, so it is a test of the idea, not a pregame feature yet.
-UNIT_POS = {"O-line": ["T", "G", "C", "OT", "OG", "OL"], "Skill": ["WR", "TE", "RB", "FB"],
-            "Front": ["DE", "DT", "NT", "DL", "LB", "ILB", "OLB", "MLB", "EDGE"],
-            "Coverage": ["CB", "S", "FS", "SS", "DB"]}
-
 def roster_turnover(snap):
     pid = "pfr_player_id" if "pfr_player_id" in snap else "player"
     out = []
@@ -494,7 +570,7 @@ def roster_turnover(snap):
 
 try:
     if cm is not None:
-        _snap = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
+        _snap = SNAP
         if "game_type" in _snap:
             _snap = _snap[_snap["game_type"] == "REG"]
         tv = roster_turnover(_snap).pivot(index=["season", "team"], columns="unit", values="turnover")
@@ -640,6 +716,9 @@ def burden(t, groups):
     return float(sum(bw.loc[t, g] for g in groups if t in bw.index and g in bw.columns))
 for name, unit, groups in INJ:
     ADV[name] = pd.Series({t: -burden(t, groups) for t in teams})
+for name, unit, pos, col in CONT_DEF:                        # each team's lineup continuity going into this week
+    if name in CONT_NAMES:
+        ADV[name] = pd.Series(cont_lookup(CONT_TAB[name], [season_now] * len(teams), [wk] * len(teams), teams), index=teams)
 for t in OVR_TEAMS:                                          # the override already replaced the QB: no extra injury penalty
     ADV["qb_inj"][t] = 0.0
 
