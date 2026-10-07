@@ -52,6 +52,7 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY")   # optional free-tier key: captur
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 M, LAM, K_QB = 12, 0.5, 150          # prior = M games of last season's average x LAM; QB shrinkage (dropbacks)
 TEST_SEASONS = [2023, 2024, 2025]
+INJ_PRACTICE = os.environ.get("INJ_PRACTICE", "") == "1"   # opt-in: weight Questionable players by practice participation (set "1"); see injury_burden
 CONT_USE = os.environ.get("CONT_USE", "")   # opt-in roster-continuity features, e.g. "cont_cov" or "cont_cov,cont_skill" (default: off; tested, did not help overall)
 QB_REPLACEMENT_PRIOR = True          # True = a QB with little tape starts near what a new QB usually produces, not near average
 FORCE_REBUILD = False                # True = ignore every cache
@@ -349,6 +350,12 @@ def build_injury_burden():
     inj["name"] = inj["full_name"].map(norm)
     inj["order"] = inj["season"] * 100 + inj["week"]
     inj["w"] = inj["report_status"].map({"Out": 1.0, "Doubtful": 0.85, "Questionable": 0.25}).fillna(0.0)
+    if INJ_PRACTICE and "practice_status" in inj:
+        # share of regular contributors who actually missed the game, 2019-23: Questionable + Full 21%, Limited 36%, Did Not Participate 58%
+        pw = {"Full Participation in Practice": 0.21, "Limited Participation in Practice": 0.36,
+              "Did Not Participate In Practice": 0.58}
+        qm = inj["report_status"].eq("Questionable")
+        inj.loc[qm, "w"] = inj.loc[qm, "practice_status"].map(pw).fillna(0.25)
     inj = inj[inj["w"] > 0].sort_values("order")
     mm = pd.merge_asof(inj, snap[["order", "name", "team", "roll3"]].sort_values("order"),
                        on="order", by=["name", "team"], direction="backward", allow_exact_matches=False)
@@ -361,7 +368,7 @@ def build_injury_burden():
     mm["val"] = mm["w"] * mm["roll3"].fillna(0.0)
     return mm.groupby(["season", "week", "team", "grp"])["val"].sum().unstack(fill_value=0).reset_index()
 
-ip = f"{OUT}/injury_burden.csv"
+ip = f"{OUT}/injury_burden{'_practice' if INJ_PRACTICE else ''}.csv"
 if fresh(ip):
     log("cached: injury_burden.csv")
     bur = pd.read_csv(ip)
@@ -656,8 +663,34 @@ if len(r) and os.path.exists(_sp):
 elif len(r):
     print(f"\n(no odds_snapshots.csv in {ODDS_DIR}: skipped the mid-week comparison)")
 
+# ---- shrink unit weights toward the weights the market implies (market weights fit only on PRIOR seasons' closing lines)
+if len(r):
+    print("\nSHRINK TOWARD MARKET WEIGHTS (out of sample): blend = (1 - lam) x our weights + lam x market-implied weights, "
+          "per unit; average miss vs the actual margin, lower is better.")
+    groups = {"all units": UNITS + ["context"], "Skill + O-line": ["Skill", "O-line"],
+              "Skill + O-line + Front": ["Skill", "O-line", "Front"], "Skill only": ["Skill"]}
+    feat_unit = {f: unit_of.get(f, "context") for f in ALL}
+    lams = [0, 0.25, 0.5, 0.75, 1.0]
+    tab = {g: {l: [] for l in lams} for g in groups}
+    for s in TEST_SEASONS:
+        tr = F[(F["season"] < s) & F["home_margin"].notna()]
+        trm = tr[tr["mkt_close"].notna()]
+        w, wm = fit(tr, ALL), fit(trm, ALL, target="mkt_close")
+        te = r[r["season"] == s]
+        for g, us in groups.items():
+            sel = np.array([feat_unit[f] in us for f in ALL])
+            for l in lams:
+                wb = w.values.copy()
+                wb[sel] = (1 - l) * w.values[sel] + l * wm.values[sel]
+                tab[g][l].append(np.abs(te[ALL].values @ wb - te["home_margin"].values))
+    print(f"  {'blend over':<24}" + "".join(f"lam={l:<6}" for l in lams))
+    for g in groups:
+        print(f"  {g:<24}" + "".join(f"{np.concatenate(tab[g][l]).mean():<10.3f}" for l in lams))
+    print(f"  (closing market's own miss on these games: {mae(r['mkt_close'], r['home_margin']):.3f}; "
+          f"lam=1 on all units is 'our data weighted exactly like the market')")
+
 # ---- final weights on every completed game
-done =F[F["home_margin"].notna()]
+done = F[F["home_margin"].notna()]
 coef = fit(done, ALL)
 print(f"\nFINAL WEIGHTS fit on {len(done)} games [sign-constrained: {SIGN_CONSTRAINED}] "
       f"(points of margin per 1 unit of the home-minus-away difference):")
@@ -826,6 +859,82 @@ if os.path.exists(_ov):
         OVR_TEAMS.add(t)
         print(f"  QB override: {t} -> {o['qb']} ({src}), rating {qb_post[t]:+.3f}")
 
+# ---- player pool (feeds the app's What-if tab) and optional manual injury overrides.
+# injury_overrides.csv columns: team, player, status, optional week.  status = Out / Doubtful / Questionable / Healthy,
+# or a number 0-1 (your own chance he misses the game).  It replaces that player's reported status for this week's board.
+_norm = lambda s: re.sub(r"\s+", " ", re.sub(r"\b(jr|sr|ii|iii|iv)\b", "", re.sub(r"[^a-z ]", "", str(s).lower()))).strip()
+_GRP = {"QB": "QB", "T": "OL", "G": "OL", "C": "OL", "OT": "OL", "OG": "OL", "OL": "OL", "DE": "DL", "DT": "DL",
+        "NT": "DL", "DL": "DL", "LB": "LB", "ILB": "LB", "OLB": "LB", "MLB": "LB", "CB": "DB", "S": "DB", "FS": "DB",
+        "SS": "DB", "DB": "DB", "WR": "WR", "TE": "TE", "RB": "RB", "FB": "RB"}
+_STATUS_W = {"out": 1.0, "doubtful": 0.85, "questionable": 0.25, "probable": 0.0, "full": 0.0, "healthy": 0.0,
+             "active": 0.0, "available": 0.0}
+POOL = pd.DataFrame()
+try:
+    _s = SNAP.copy()
+    if "game_type" in _s:
+        _s = _s[_s["game_type"] == "REG"]
+    _s["order"] = _s["season"].astype(int) * 100 + _s["week"].astype(int)
+    _s = _s.sort_values("order")
+    _s["share"] = _s[["offense_pct", "defense_pct"]].max(axis=1).fillna(0.0)
+    _s["key"] = _s["player"].map(_norm)
+    _s["roll3"] = _s.groupby(["key", "team"])["share"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+    _last = _s.groupby(["key", "team"]).tail(1).copy()
+    _last = _last[(_last["order"] >= _last["team"].map(_s.groupby("team")["order"].max()) - 3) & (_last["roll3"] >= 0.2)]
+    _last["grp"] = _last["position"].map(_GRP)
+    POOL = (_last.dropna(subset=["grp"])[["team", "player", "key", "position", "grp", "roll3"]]
+            .rename(columns={"roll3": "snap_share", "player": "name"}).reset_index(drop=True))
+    _ij = load_years(nfl.load_injuries, [season_now], "injuries")
+    _ij = _ij[_ij["week"].astype(int) == wk].copy()
+    if "game_type" in _ij:
+        _ij = _ij[_ij["game_type"] == "REG"]
+    _ij["key"] = _ij["full_name"].map(_norm)
+    _ij["w"] = _ij["report_status"].map({"Out": 1.0, "Doubtful": 0.85, "Questionable": 0.25}).fillna(0.0)
+    if INJ_PRACTICE and "practice_status" in _ij:
+        _pw = {"Full Participation in Practice": 0.21, "Limited Participation in Practice": 0.36,
+               "Did Not Participate In Practice": 0.58}
+        _qm = _ij["report_status"].eq("Questionable")
+        _ij.loc[_qm, "w"] = _ij.loc[_qm, "practice_status"].map(_pw).fillna(0.25)
+    if "date_modified" in _ij:
+        _ij = _ij.sort_values("date_modified")
+    _ij = _ij.drop_duplicates(["team", "key"], keep="last")
+    POOL = POOL.merge(_ij[["team", "key", "w", "report_status", "practice_status"]], on=["team", "key"], how="left")
+    POOL["w_now"] = POOL.pop("w").fillna(0.0)
+    POOL["report_status"] = POOL["report_status"].fillna("")
+    POOL["practice_status"] = POOL["practice_status"].fillna("")
+    POOL["override"] = ""
+except Exception as e:
+    print("Player pool for the What-if tab not built:", str(e)[:120])
+    POOL = pd.DataFrame()
+_io = os.path.join(ROOT if not IN_COLAB else OUT, "injury_overrides.csv")
+if os.path.exists(_io) and len(POOL):
+    iov = pd.read_csv(_io)
+    if "week" in iov:
+        iov = iov[iov["week"].isna() | (iov["week"] == wk)]
+    for _, o in iov.iterrows():
+        t, k = str(o["team"]).strip().upper(), _norm(o["player"])
+        m = POOL[(POOL["team"] == t) & ((POOL["key"] == k) | POOL["key"].str.endswith(" " + k))]
+        if len(m) != 1:
+            print(f"  injury override skipped: {len(m)} matches for '{o['player']}' on {t} (use his full name; he must have played recently)")
+            continue
+        sv = str(o["status"]).strip().lower()
+        try:
+            wn = float(sv)
+        except ValueError:
+            wn = _STATUS_W.get(sv)
+        if wn is None:
+            print(f"  injury override skipped: unknown status '{o['status']}' for {o['player']}")
+            continue
+        i = m.index[0]
+        g = POOL.loc[i, "grp"]
+        if t not in bw.index:
+            bw.loc[t] = 0.0
+        if g not in bw.columns:
+            bw[g] = 0.0
+        bw.loc[t, g] = max(float(bw.loc[t, g]) + (wn - POOL.loc[i, "w_now"]) * POOL.loc[i, "snap_share"], 0.0)
+        POOL.loc[i, ["w_now", "override"]] = [wn, str(o["status"])]
+        print(f"  injury override: {t} {POOL.loc[i, 'name']} -> {o['status']} (weight {wn:.2f}, snap share {POOL.loc[i, 'snap_share']:.2f})"
+              + ("  [QB: if he is out, also set the replacement in qb_overrides.csv]" if g == "QB" and wn >= 0.85 else ""))
+
 teams = sorted(set(tg["team"]))
 ADV = {}                                                     # each team's advantage per feature
 for name, unit, col, sign in SPEC:
@@ -902,6 +1011,9 @@ board.to_csv(f"{BOARD_DIR}/unit_board_{season_now}_wk{wk}_{stamp}.csv", index=Fa
 board.to_csv(f"{BOARD_DIR}/unit_board_latest.csv", index=False)
 teamtab.to_csv(f"{BOARD_DIR}/unit_team_ratings_latest.csv")
 qb_grades.to_csv(f"{BOARD_DIR}/unit_qb_grades_latest.csv", index=False)
+coef.rename("coef").rename_axis("feature").reset_index().to_csv(f"{BOARD_DIR}/model_weights_latest.csv", index=False)
+if len(POOL):
+    POOL.drop(columns=["key"]).to_csv(f"{BOARD_DIR}/injury_player_pool_latest.csv", index=False)
 log(f"done. Saved the dated board, 'latest' copies and team ratings to {BOARD_DIR}")
 print("\nWeekly routine: run after the Wednesday and Friday injury reports. Each dated board file is a "
       "pregame record (it carries its own build time and each game's kickoff time).")

@@ -56,8 +56,8 @@ if not boards:
     st.info("No boards yet. Run the workflow from the Actions tab.")
     st.stop()
 
-tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_fwd = st.tabs(
-    ["This week", "Game", "Teams", "QBs", "Schemes", "Forward test"])
+tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_wi, tab_fwd = st.tabs(
+    ["This week", "Game", "Teams", "QBs", "Schemes", "What-if", "Forward test"])
 
 # ---------------------------------------------------------------- This week
 with tab_week:
@@ -249,6 +249,98 @@ with tab_sch:
                            "the defense uses the scheme than the league (about 36 dropbacks per game). The schemes "
                            "overlap (a man defense is also Cover-1), so do not add the rows together. A margin of "
                            "error wider than the split itself means the number is mostly noise.")
+
+# ---------------------------------------------------------------- What-if
+WI_FEAT = {"QB": "qb_inj", "OL": "ol_inj", "WR": "sk_inj", "TE": "sk_inj", "RB": "sk_inj", "DL": "fr_inj",
+           "LB": "fr_inj", "DB": "cov_inj"}
+WI_UNIT = {"qb_inj": "QB", "ol_inj": "O-line", "sk_inj": "Skill", "fr_inj": "Front", "cov_inj": "Coverage"}
+WI_W = {"Healthy": 0.0, "Questionable": 0.25, "Doubtful": 0.85, "Out": 1.0}
+GRP_ORDER = {g: i for i, g in enumerate(["QB", "RB", "WR", "TE", "OL", "DL", "LB", "DB"])}
+
+
+def wi_label(w):
+    return "Out" if w >= 0.95 else "Doubtful" if w >= 0.6 else "Questionable" if w >= 0.2 else "Healthy"
+
+
+with tab_wi:
+    pool = load_csv("boards/injury_player_pool_latest.csv")
+    wts = load_csv("boards/model_weights_latest.csv")
+    qbg = load_csv("boards/unit_qb_grades_latest.csv")
+    if pool is None or wts is None or qbg is None:
+        st.info("The What-if tool needs a fresh workflow run (it builds the player list and model weights).")
+    else:
+        st.caption("Change a player's availability and see how the model line moves, using the same weights and injury "
+                   "math as the board. Nothing is saved. To make a change stick in the board itself, put it in "
+                   "injury_overrides.csv (and qb_overrides.csv for a different starting QB).")
+        b = boards[list(boards)[-1]].copy()
+        labels = (b["away_team"] + " @ " + b["home_team"]).tolist()
+        sel = st.selectbox("Game ", labels, key="wi_game")
+        r = b.iloc[labels.index(sel)]
+        coef = dict(zip(wts["feature"], wts["coef"]))
+        grades = qbg.drop_duplicates("name").set_index("name")["pts_vs_avg_starter"]
+        deltas, notes, qb_pts, picks = {}, [], {}, {}
+        for side, team, qbn, src in (("home", r["home_team"], r["home_QB"], r.get("home_QB_src", "")),
+                                     ("away", r["away_team"], r["away_QB"], r.get("away_QB_src", ""))):
+            with st.expander(f"{team} ({side}) availability", expanded=True):
+                opts = [qbn] + [n for n in qbg.sort_values("pts_vs_avg_starter", ascending=False)["name"] if n != qbn]
+                qb_pick = st.selectbox(f"{team} starting QB", opts, key=f"wi_qb_{side}_{team}")
+                p = pool[pool["team"] == team].copy()
+                p["lab"] = p["w_now"].map(wi_label)
+                p["ord"] = p["grp"].map(GRP_ORDER)
+                p = p.sort_values(["ord", "snap_share"], ascending=[True, False])
+                p = p[p["snap_share"] >= 0.3].reset_index(drop=True)
+                edit_in = pd.DataFrame({"Player": p["name"], "Pos": p["position"], "Snap %": (p["snap_share"] * 100).round(0),
+                                        "Now": p["lab"], "Your call": p["lab"]})
+                ed = st.data_editor(
+                    edit_in, hide_index=True, use_container_width=True, key=f"wi_ed_{side}_{team}",
+                    disabled=["Player", "Pos", "Snap %", "Now"],
+                    column_config={"Your call": st.column_config.SelectboxColumn(
+                        "Your call", options=list(WI_W), required=True)})
+                qb_changed = qb_pick != qbn
+                qb_override_now = str(src).startswith("override")
+                d = {f: 0.0 for f in WI_UNIT}
+                for i, row in ed.iterrows():
+                    if row["Your call"] == row["Now"]:
+                        continue
+                    f = WI_FEAT.get(p.loc[i, "grp"])
+                    if f is None or (f == "qb_inj" and (qb_changed or qb_override_now)):
+                        continue
+                    d[f] += (WI_W[row["Your call"]] - float(p.loc[i, "w_now"])) * float(p.loc[i, "snap_share"])
+                if qb_changed and not qb_override_now:                 # a new QB replaces the QB injury penalty
+                    d["qb_inj"] -= float((p[p["grp"] == "QB"]["w_now"] * p[p["grp"] == "QB"]["snap_share"]).sum())
+                deltas[side] = d
+                qb_pts[side] = 0.0
+                if qb_changed:
+                    if qb_pick in grades.index and qbn in grades.index:
+                        qb_pts[side] = float(grades[qb_pick] - grades[qbn])
+                    else:
+                        notes.append(f"No grade found for {qb_pick if qb_pick not in grades.index else qbn}: QB swap ignored for {team}.")
+        change = 0.0
+        rows = []
+        for f, unit in WI_UNIT.items():
+            v = coef.get(f, 0.0) * (-deltas["home"][f] + deltas["away"][f])
+            change += v
+            if abs(v) > 0.005:
+                rows.append({"Where": unit + " injuries", "Points toward home": round(v, 2)})
+        qv = qb_pts["home"] - qb_pts["away"]
+        change += qv
+        if abs(qv) > 0.005:
+            rows.append({"Where": "Starting QB change", "Points toward home": round(qv, 2)})
+        base = float(r["fair_home_spread"])
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Board line", fmt_line(base))
+        c2.metric("What-if line", fmt_line(base + change), delta=f"{change:+.1f} pts toward home", delta_color="off")
+        if "market_home_spread" in r and pd.notna(r["market_home_spread"]):
+            c3.metric("Edge vs market", f"{base + change - r['market_home_spread']:+.1f}",
+                      delta=f"was {base - r['market_home_spread']:+.1f}", delta_color="off")
+        if rows:
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        for n in notes:
+            st.warning(n)
+        st.caption("Positive = more toward the home team. The model weights injuries by status (Out 1.0, Doubtful 0.85, "
+                   "Questionable 0.25) times the player's recent snap share, so a player with a low snap share barely "
+                   "moves the line. These weights were fit to the final injury report, so a status you set by hand is "
+                   "only as good as your read on who will really play.")
 
 # ---------------------------------------------------------------- Forward test
 with tab_fwd:
