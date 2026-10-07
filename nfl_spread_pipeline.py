@@ -478,6 +478,17 @@ def fit(df, feats, alpha=20, target="home_margin"):
     mdl = Ridge(alpha=alpha, fit_intercept=False, positive=SIGN_CONSTRAINED).fit(X / sd, y)
     return pd.Series(mdl.coef_ / sd, index=feats)
 
+TEAM_ABBR = {
+    "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF",
+    "Carolina Panthers": "CAR", "Chicago Bears": "CHI", "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE",
+    "Dallas Cowboys": "DAL", "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
+    "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX", "Kansas City Chiefs": "KC",
+    "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC", "Los Angeles Rams": "LA", "Miami Dolphins": "MIA",
+    "Minnesota Vikings": "MIN", "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
+    "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT", "San Francisco 49ers": "SF",
+    "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB", "Tennessee Titans": "TEN",
+    "Washington Commanders": "WAS", "Washington Football Team": "WAS"}
+
 # ---- honest out-of-sample check against the market
 ok = set(F[F["season"].isin(TEST_SEASONS) & F["home_margin"].notna() & F["mkt_open"].notna()
            & F["mkt_close"].notna()]["game_id"])
@@ -493,6 +504,10 @@ for s in TEST_SEASONS:
     _tm["qb_swap"] = 0.0
     _tm["qb_rating"] = _tm["qb_known"]
     te["pred_mon"] = _tm[ALL].values @ _w.values
+    _th = te.copy()                                              # hybrid: injuries as finally reported, but the PREVIOUS starter at QB
+    _th["qb_swap"] = 0.0
+    _th["qb_rating"] = _th["qb_known"]
+    te["pred_hyb"] = _th[ALL].values @ _w.values
     _noswap = [c for c in ALL if c != "qb_swap"]
     te["pred0"] = te[_noswap].values @ fit(tr, _noswap).values
     _nocont = [c for c in ALL if c not in CONT_NAMES]
@@ -558,8 +573,91 @@ if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
     r[[c for c in keep if c in r]].to_csv(f"{OUT}/oos_predictions.csv", index=False)
     log(f"saved oos_predictions.csv ({len(r)} test games) to {OUT}")
 
+# ---- mid-week lines: Thursday-evening and Friday consensus from odds_snapshots.csv (the timing a weekly board can act on)
+def build_midweek(path):
+    """One row per game: median home spread (home favored = +) across books at the last snapshot on Thursday / Friday
+    (ET) of game week, before kickoff. Thursday-night games have no earlier Thursday and are skipped."""
+    cache = f"{OUT}/midweek_lines.csv"
+    if os.path.exists(cache) and os.path.getmtime(cache) > os.path.getmtime(path):
+        c = pd.read_csv(cache)
+        c["kick"] = pd.to_datetime(c["kick"], utc=True)
+        return c
+    parts = []
+    for ch in pd.read_csv(path, usecols=["snapshot_ts", "event_id", "commence_time", "home_team", "away_team",
+                                         "bookmaker", "market", "outcome", "point"], chunksize=2_000_000):
+        ch = ch[(ch["market"] == "spreads") & (ch["outcome"] == ch["home_team"])]
+        parts.append(ch.drop(columns=["market", "outcome"]))
+    s = pd.concat(parts, ignore_index=True)
+    s["snap"] = pd.to_datetime(s["snapshot_ts"], utc=True)
+    s["kick"] = pd.to_datetime(s["commence_time"], utc=True)
+    ke = s["kick"].dt.tz_convert("America/New_York")
+    back = (ke.dt.weekday - 3) % 7
+    thu = ke.dt.normalize() - pd.to_timedelta(back, unit="D") + pd.Timedelta(hours=23, minutes=59)
+    thu = thu.where(back > 0).dt.tz_convert("UTC")
+    ev = (s.drop_duplicates("event_id")[["event_id", "home_team", "away_team", "kick"]]
+            .assign(home=lambda d: d["home_team"].map(TEAM_ABBR), away=lambda d: d["away_team"].map(TEAM_ABBR))
+            .set_index("event_id"))
+    for name, cut in (("mid_thu", thu), ("mid_fri", thu + pd.Timedelta(days=1))):
+        sub = s[(s["snap"] <= cut) & (s["snap"] > cut - pd.Timedelta(hours=24)) & (s["snap"] < s["kick"] - pd.Timedelta(hours=3))]
+        sub = sub[sub["snap"] == sub.groupby("event_id")["snap"].transform("max")]
+        ev[name] = -sub.groupby("event_id")["point"].median()
+        ev[name + "_books"] = sub.groupby("event_id")["bookmaker"].nunique()
+    ev = ev.dropna(subset=["home", "away"]).reset_index(drop=True)[["home", "away", "kick", "mid_thu", "mid_fri", "mid_thu_books", "mid_fri_books"]]
+    ev.to_csv(cache, index=False)
+    return ev
+
+def _bets(pred, line, hm, label):
+    edge, cover = pred - line, hm - line
+    out = []
+    for thr in (0, 1, 2, 3):
+        sel = (edge.abs() >= thr) & (cover != 0)
+        n = int(sel.sum())
+        if n:
+            wr = float((np.sign(edge[sel]) == np.sign(cover[sel])).mean())
+            out.append(f"|edge|>={thr}: {n} bets {wr:.1%} (ROI {wr * 100 / 110 - (1 - wr):+.1%})")
+    print(f"    {label}: " + " | ".join(out))
+
+_sp = f"{ODDS_DIR}/odds_snapshots.csv"
+if len(r) and os.path.exists(_sp):
+    log("building mid-week lines from odds_snapshots.csv (first run reads the whole file, a few minutes)")
+    mw = build_midweek(_sp)
+    _rr = r[["game_id", "home_team", "away_team", "kickoff_utc"]].copy()
+    _rr["kickoff_utc"] = pd.to_datetime(_rr["kickoff_utc"], utc=True).astype("datetime64[ns, UTC]")
+    mw["kick"] = mw["kick"].astype("datetime64[ns, UTC]")
+    _m = pd.merge_asof(_rr.sort_values("kickoff_utc"), mw.sort_values("kick"), left_on="kickoff_utc", right_on="kick",
+                       left_by=["home_team", "away_team"], right_by=["home", "away"],
+                       tolerance=pd.Timedelta("3D"), direction="nearest")
+    rm = r.merge(_m[["game_id", "mid_thu", "mid_fri", "mid_thu_books", "mid_fri_books"]], on="game_id", how="left")
+    print(f"\nMID-WEEK LINES: Thursday line found for {rm['mid_thu'].notna().sum()} of {len(rm)} test games, "
+          f"Friday line for {rm['mid_fri'].notna().sum()} (Thursday-night games excluded by design)")
+    for tag, col in (("THURSDAY EVENING", "mid_thu"), ("FRIDAY", "mid_fri")):
+        q = rm[rm[col].notna()]
+        if len(q) < 40:
+            print(f"  {tag}: only {len(q)} games, skipping")
+            continue
+        hm = q["home_margin"]
+        print(f"\n  {tag} line, {len(q)} games ({q['season'].value_counts().sort_index().to_dict()}). Average miss: "
+              f"that line {mae(q[col], hm):.3f} | Monday opener {mae(q['mkt_open'], hm):.3f} | close {mae(q['mkt_close'], hm):.3f}")
+        print(f"    models: full information {mae(q['pred'], hm):.3f} | injuries known but previous starter {mae(q['pred_hyb'], hm):.3f} "
+              f"| Monday-style (no injuries, previous starter) {mae(q['pred_mon'], hm):.3f}")
+        print(f"    (full information uses final injury reports and the actual starter, which is more than anyone has on Thursday; "
+              f"Monday-style uses less. Reality sits between them.)")
+        for lbl, pc in (("full information", "pred"), ("injuries + previous starter", "pred_hyb"), ("Monday-style", "pred_mon")):
+            _bets(q[pc], q[col], hm, f"betting {lbl} vs this line")
+        mv = q["mkt_close"] - q[col]
+        for lbl, pc in (("full information", "pred"), ("injuries + previous starter", "pred_hyb"), ("Monday-style", "pred_mon")):
+            lean = q[pc] - q[col]
+            big = (mv.abs() >= 1) & (lean.abs() >= 0.5)
+            if big.sum() > 20:
+                print(f"    line move from here to close of 1+ pts: {lbl} leaned that way "
+                      f"{float((np.sign(lean[big]) == np.sign(mv[big])).mean()):.1%} of {int(big.sum())} games; "
+                      f"correlation of lean with move {float(np.corrcoef(lean, mv)[0, 1]):+.3f}")
+    rm.to_csv(f"{OUT}/oos_midweek.csv", index=False)
+elif len(r):
+    print(f"\n(no odds_snapshots.csv in {ODDS_DIR}: skipped the mid-week comparison)")
+
 # ---- final weights on every completed game
-done = F[F["home_margin"].notna()]
+done =F[F["home_margin"].notna()]
 coef = fit(done, ALL)
 print(f"\nFINAL WEIGHTS fit on {len(done)} games [sign-constrained: {SIGN_CONSTRAINED}] "
       f"(points of margin per 1 unit of the home-minus-away difference):")
@@ -633,16 +731,6 @@ except Exception as e:
     print("Roster turnover test skipped:", str(e)[:120])
 
 # ================================================================== stage 7: current ratings and the weekly board
-TEAM_ABBR = {
-    "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF",
-    "Carolina Panthers": "CAR", "Chicago Bears": "CHI", "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE",
-    "Dallas Cowboys": "DAL", "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
-    "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX", "Kansas City Chiefs": "KC",
-    "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC", "Los Angeles Rams": "LA", "Miami Dolphins": "MIA",
-    "Minnesota Vikings": "MIN", "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
-    "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT", "San Francisco 49ers": "SF",
-    "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB", "Tennessee Titans": "TEN",
-    "Washington Commanders": "WAS", "Washington Football Team": "WAS"}
 
 def fetch_market_spreads(key):
     """Current consensus (median across books) home spread, positive = home favored. Costs 1 Odds API credit."""
