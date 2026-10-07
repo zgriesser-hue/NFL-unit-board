@@ -1,0 +1,4 @@
+data/*
+!data/game_lines.csv
+!data/.gitkeep
+__pycache__/
