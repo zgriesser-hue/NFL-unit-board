@@ -56,7 +56,8 @@ if not boards:
     st.info("No boards yet. Run the workflow from the Actions tab.")
     st.stop()
 
-tab_week, tab_game, tab_teams, tab_qb, tab_fwd = st.tabs(["This week", "Game", "Teams", "QBs", "Forward test"])
+tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_fwd = st.tabs(
+    ["This week", "Game", "Teams", "QBs", "Schemes", "Forward test"])
 
 # ---------------------------------------------------------------- This week
 with tab_week:
@@ -161,6 +162,89 @@ with tab_qb:
         st.dataframe(v[["QB", "Team", "Status", "Pts vs avg starter", "Dropbacks", "Confidence"]]
                      .round({"Pts vs avg starter": 1, "Confidence": 2}),
                      hide_index=True, use_container_width=True)
+
+# ---------------------------------------------------------------- Schemes
+SCH = {"blitz": "Blitz", "man": "Man coverage", "cov1": "Cover-1", "cov2": "Cover-2", "cov3": "Cover-3",
+       "cov4": "Cover-4"}
+DROPBACKS = 36          # typical dropbacks per team per game, for turning EPA into points
+
+
+def style_label(row):
+    parts = []
+    if row["man_n"] > 100:
+        parts.append("man-heavy" if row["man_z"] >= 1 else "zone-heavy" if row["man_z"] <= -1 else "")
+    parts.append("blitz-heavy" if row["blitz_z"] >= 1 else "rarely blitzes" if row["blitz_z"] <= -1 else "")
+    return ", ".join(x for x in parts if x) or "balanced"
+
+
+with tab_sch:
+    sp = load_csv("boards/scheme_team_profiles.csv")
+    sq = load_csv("boards/scheme_qb_splits.csv")
+    if sp is None or sq is None:
+        st.info("No scheme data yet. It builds on the next workflow run (or run scheme_profiles.py).")
+    else:
+        season = st.selectbox("Season", sorted(sp["season"].unique())[::-1], index=0)
+        prof = sp[sp["season"] == season].set_index("team")
+        st.caption("Shares are the percent of dropbacks faced. 'League' is the same season's average, because the "
+                   "charting labels for man/zone shift between seasons. A team's scheme is a stable trait "
+                   "(it correlates 0.7-0.9 between odd and even games), so these profiles are reliable.")
+
+        st.subheader("Defensive scheme by team")
+        show = pd.DataFrame({"Dropbacks": prof["dropbacks_faced"]})
+        for k, lab in SCH.items():
+            show[lab + " %"] = (prof[k] * 100).round(0)
+        show["Style"] = prof.apply(style_label, axis=1)
+        lg = {lab: round(float(prof[k + "_league"].iloc[0]) * 100) for k, lab in SCH.items()}
+        st.dataframe(show.sort_values("Man coverage %", ascending=False), use_container_width=True)
+        st.caption("League average: " + ", ".join(f"{lab} {v}%" for lab, v in lg.items()))
+
+        st.subheader("Quarterback vs a defense's scheme")
+        st.warning("Treat this as context, not a prediction. In testing, QB-specific scheme splits did not hold up "
+                   "out of sample (split-half correlation near zero, and they failed to replicate across eras). "
+                   "The model does not use them.")
+        mode = st.radio("Matchup", ["From this week's board", "Pick any QB and defense"], horizontal=True)
+        if mode == "From this week's board":
+            b = boards[list(boards)[-1]]
+            pairs = []
+            for _, r in b.iterrows():
+                pairs += [(r["home_QB"], r["away_team"]), (r["away_QB"], r["home_team"])]
+            lbl = [f"{q} vs {t} defense" for q, t in pairs]
+            pick = st.selectbox("Matchup", lbl)
+            qb_name, dteam = pairs[lbl.index(pick)]
+        else:
+            c1, c2 = st.columns(2)
+            qb_name = c1.selectbox("Quarterback", sorted(sq["name"].dropna().unique()))
+            dteam = c2.selectbox("Defense", sorted(prof.index))
+        qrows = sq[sq["name"] == qb_name]
+        if dteam not in prof.index:
+            st.info(f"No scheme profile for {dteam}.")
+        elif qrows.empty:
+            st.info(f"No scheme splits for {qb_name} (needs about 100 recent charted dropbacks).")
+        else:
+            st.caption(f"{qb_name}: EPA per dropback vs an average defense {float(qrows['baseline'].iloc[0]):+.2f}. "
+                       f"Defense: {dteam}, {season} profile.")
+            out = []
+            for k, lab in SCH.items():
+                q = qrows[qrows["scheme"] == k]
+                if q.empty or pd.isna(prof.loc[dteam, k]):
+                    continue
+                q = q.iloc[0]
+                dshare, lshare = float(prof.loc[dteam, k]), float(prof.loc[dteam, k + "_league"])
+                out.append({
+                    "Scheme": lab,
+                    "Defense uses": f"{dshare * 100:.0f}% (league {lshare * 100:.0f}%)",
+                    "His EPA with / without": f"{q['epa_yes']:+.2f} / {q['epa_no']:+.2f} (n {int(q['n_yes'])}/{int(q['n_no'])})",
+                    "His split vs typical": f"{q['rel_diff']:+.2f} +/- {1.96 * q['se']:.2f}",
+                    "Est. effect, pts": round(float(q["shrunk"]) * (dshare - lshare) * DROPBACKS, 2),
+                    "Raw effect, pts": round(float(q["rel_diff"]) * (dshare - lshare) * DROPBACKS, 2)})
+            if out:
+                st.dataframe(pd.DataFrame(out), hide_index=True, use_container_width=True)
+                st.caption("'His split vs typical' is how much worse (negative) or better he does against that scheme "
+                           "than the average QB does, in EPA per dropback, with a 95% margin of error. 'Est. effect' "
+                           "pulls that split toward zero by how noisy it is, then multiplies by how much more or less "
+                           "the defense uses the scheme than the league (about 36 dropbacks per game). The schemes "
+                           "overlap (a man defense is also Cover-1), so do not add the rows together. A margin of "
+                           "error wider than the split itself means the number is mostly noise.")
 
 # ---------------------------------------------------------------- Forward test
 with tab_fwd:
