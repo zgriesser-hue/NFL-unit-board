@@ -52,7 +52,7 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY")   # optional free-tier key: captur
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 M, LAM, K_QB = 12, 0.5, 150          # prior = M games of last season's average x LAM; QB shrinkage (dropbacks)
 TEST_SEASONS = [2023, 2024, 2025]
-USE_CONTINUITY = True              # True = add pregame roster-continuity features (share of recent snaps from last year's players)
+CONT_USE = os.environ.get("CONT_USE", "")   # opt-in roster-continuity features, e.g. "cont_cov" or "cont_cov,cont_skill" (default: off; tested, did not help overall)
 QB_REPLACEMENT_PRIOR = True          # True = a QB with little tape starts near what a new QB usually produces, not near average
 FORCE_REBUILD = False                # True = ignore every cache
 MAX_AGE_DAYS = 3                     # caches older than this are rebuilt
@@ -392,7 +392,7 @@ CONT_DEF = [("cont_oline", "O-line", UNIT_POS["O-line"], "offense_snaps"),
             ("cont_skill", "Skill", UNIT_POS["Skill"], "offense_snaps"),
             ("cont_front", "Front", UNIT_POS["Front"], "defense_snaps"),
             ("cont_cov", "Coverage", UNIT_POS["Coverage"], "defense_snaps")]
-CONT_NAMES = [c[0] for c in CONT_DEF] if USE_CONTINUITY else []
+CONT_NAMES = [c[0] for c in CONT_DEF if c[0] in CONT_USE.split(",")]
 unit_of = {n: u for n, u, *_ in SPEC}
 unit_of.update({n: u for n, u, _ in INJ})
 unit_of.update({n: u for n, u, *_ in CONT_DEF if n in CONT_NAMES})
@@ -441,7 +441,7 @@ def rating_hist(col):
 
 log("building the training frame ...")
 SNAP = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
-CONT_TAB = build_continuity(SNAP) if USE_CONTINUITY else {}
+CONT_TAB = build_continuity(SNAP) if CONT_NAMES else {}
 F = games[games["is_playoff"] == 0].copy().reset_index(drop=True)
 mi = lambda c: pd.MultiIndex.from_arrays([F["game_id"], F[c]])
 F["home_flag"] = 1 - F["neutral_site"]
@@ -456,6 +456,7 @@ for name, unit, col, sign in SPEC:
     else:
         R = rating_hist(col)
         F[name] = sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values)
+F["qb_known"] = np.nan_to_num(known.reindex(mi("home_team")).values - known.reindex(mi("away_team")).values)
 for side in ("home", "away"):
     bb = bur.rename(columns={g: f"{side}_{g}" for g in GR}).rename(columns={"team": f"{side}_team"})
     F = F.merge(bb, on=["season", "week", f"{side}_team"], how="left")
@@ -467,8 +468,8 @@ for name, unit, pos, col in CONT_DEF:                                # + = home 
         a = cont_lookup(CONT_TAB[name], F["season"], F["week"], F["away_team"])
         F[name] = h - a
 F[ALL] = F[ALL].fillna(0.0)
-F["qb_chg"] = (QB_CHG.reindex(mi("home_team")).fillna(False).astype(bool).values
-               | QB_CHG.reindex(mi("away_team")).fillna(False).astype(bool).values)
+F["qb_chg"] = (QB_CHG.reindex(mi("home_team")).astype("boolean").fillna(False).to_numpy(dtype=bool)
+               | QB_CHG.reindex(mi("away_team")).astype("boolean").fillna(False).to_numpy(dtype=bool))
 
 def fit(df, feats, alpha=20, target="home_margin"):
     X, y = df[feats].values, df[target].values
@@ -484,7 +485,14 @@ rows = []
 for s in TEST_SEASONS:
     tr = F[(F["season"] < s) & F["home_margin"].notna()]
     te = F[F["season"] == s].copy()
-    te["pred"] = te[ALL].values @ fit(tr, ALL).values
+    _w = fit(tr, ALL)
+    te["pred"] = te[ALL].values @ _w.values
+    _tm = te.copy()                                              # as of Monday noon: no injury info, no starter news
+    for _c in [i[0] for i in INJ]:
+        _tm[_c] = 0.0
+    _tm["qb_swap"] = 0.0
+    _tm["qb_rating"] = _tm["qb_known"]
+    te["pred_mon"] = _tm[ALL].values @ _w.values
     _noswap = [c for c in ALL if c != "qb_swap"]
     te["pred0"] = te[_noswap].values @ fit(tr, _noswap).values
     _nocont = [c for c in ALL if c not in CONT_NAMES]
@@ -532,7 +540,21 @@ if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
         print(f"  line movement: when the line moved 1+ points, the model had leaned that way {agree:.1%} of the time "
               f"({int(big.sum())} games, +/- {np.sqrt(0.25 / big.sum()):.1%}); correlation of model-vs-open with the move: "
               f"{float(np.corrcoef(lean, mv)[0, 1]):+.3f}")
-    keep = ["game_id", "season", "week", "home_team", "away_team", "home_margin", "pred", "mkt_open", "mkt_close"]
+    print("  OPENER-TIMED model (what it would have said Monday noon: previous starter, no injury information):")
+    print(f"    average miss: model {mae(r['pred_mon'], hm):.3f} | opener {mae(r['mkt_open'], hm):.3f}")
+    edge, cover = r["pred_mon"] - r["mkt_open"], hm - r["mkt_open"]
+    for thr in [0, 1, 2, 3, 4]:
+        sel = (edge.abs() >= thr) & (cover != 0)
+        n = int(sel.sum())
+        if n:
+            wr = float((np.sign(edge[sel]) == np.sign(cover[sel])).mean())
+            print(f"    |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {wr * 100 / 110 - (1 - wr):+.1%}")
+    lean2 = r["pred_mon"] - r["mkt_open"]
+    big2 = (mv.abs() >= 1) & (lean2.abs() >= 0.5)
+    if big2.sum() > 30:
+        print(f"    line movement: leaned the move's way {float((np.sign(lean2[big2]) == np.sign(mv[big2])).mean()):.1%} of the time "
+              f"({int(big2.sum())} games); correlation {float(np.corrcoef(lean2, mv)[0, 1]):+.3f}")
+    keep = ["game_id", "season", "week", "home_team", "away_team", "home_margin", "pred", "pred_mon", "mkt_open", "mkt_close"]
     r[[c for c in keep if c in r]].to_csv(f"{OUT}/oos_predictions.csv", index=False)
     log(f"saved oos_predictions.csv ({len(r)} test games) to {OUT}")
 
