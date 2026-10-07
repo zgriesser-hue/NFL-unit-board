@@ -287,6 +287,10 @@ def qb_tables(K):
     q["pre"] = ((cg["epa_sum"].cumsum() - q["epa_sum"]) + K * QB_PRIOR) / ((cg["db"].cumsum() - q["db"]) + K)
     st = st.merge(q[["game_id", "posteam", "passer_player_id", "pre"]], on=["game_id", "posteam", "passer_player_id"], how="left")
     st["prev_post"] = st.groupby("posteam")["post"].shift(1)
+    prev_id = st.groupby("posteam")["passer_player_id"].shift(1)
+    global QB_CHG                                          # True when the starter differs from the team's previous starter
+    QB_CHG = pd.Series((prev_id.notna() & (prev_id != st["passer_player_id"])).values,
+                       index=pd.MultiIndex.from_arrays([st["game_id"], st["posteam"]]))
     known = pd.Series(st["prev_post"].fillna(QB_PRIOR).values,
                       index=pd.MultiIndex.from_arrays([st["game_id"], st["posteam"]]))
     last = st.groupby("posteam").tail(1)
@@ -402,9 +406,11 @@ for side in ("home", "away"):
 for name, unit, groups in INJ:                                   # + = home LESS hurt than away
     F[name] = -sum(F[f"home_{g}"].fillna(0.0) - F[f"away_{g}"].fillna(0.0) for g in groups if f"home_{g}" in F)
 F[ALL] = F[ALL].fillna(0.0)
+F["qb_chg"] = (QB_CHG.reindex(mi("home_team")).fillna(False).astype(bool).values
+               | QB_CHG.reindex(mi("away_team")).fillna(False).astype(bool).values)
 
-def fit(df, feats, alpha=20):
-    X, y = df[feats].values, df["home_margin"].values
+def fit(df, feats, alpha=20, target="home_margin"):
+    X, y = df[feats].values, df[target].values
     sd = X.std(axis=0)
     sd[sd == 0] = 1.0
     mdl = Ridge(alpha=alpha, fit_intercept=False, positive=SIGN_CONSTRAINED).fit(X / sd, y)
@@ -428,9 +434,9 @@ if len(r):
     print(f"\nOUT-OF-SAMPLE {TEST_SEASONS} [sign-constrained: {SIGN_CONSTRAINED}], {len(r)} identical games: unit model MAE "
           f"{mae(r['pred'], r['home_margin']):.3f} | closing market {mae(r['mkt_close'], r['home_margin']):.3f} "
           f"(expect about 10.2-10.3 vs 9.74)")
-    _c = r[r["qb_swap"].abs() > 0.05]
+    _c = r[r["qb_chg"]]
     if len(_c):
-        print(f"  QB-change games ({len(_c)}): with qb_swap {mae(_c['pred'], _c['home_margin']):.3f} | "
+        print(f"  games where a team changed starters ({len(_c)}): with qb_swap {mae(_c['pred'], _c['home_margin']):.3f} | "
               f"without {mae(_c['pred0'], _c['home_margin']):.3f} | closing market {mae(_c['mkt_close'], _c['home_margin']):.3f}")
     print(f"  all games: with qb_swap {mae(r['pred'], r['home_margin']):.3f} | without {mae(r['pred0'], r['home_margin']):.3f}")
 else:
@@ -446,6 +452,17 @@ for u in UNITS:
     swing = float((done[feats].values @ coef[feats].values).std())
     print(f"  {u:<9} typical swing {swing:.2f} pts | " + ", ".join(f"{f} {coef[f]:+.2f}" for f in feats))
 print(f"  context   home_flag {coef['home_flag']:+.2f}, rest_diff {coef['rest_diff']:+.2f}")
+
+# ---- what weights would explain the MARKET's line? (same features, same constraints, target = closing spread)
+_mk = F[F["mkt_close"].notna() & F["home_margin"].notna()]
+if len(_mk) > 300:
+    cm = fit(_mk, ALL, target="mkt_close")
+    print(f"\nMARKET-IMPLIED WEIGHTS fit on {len(_mk)} games (target = closing spread). Typical swing in points, model weights vs market weights:")
+    for u in UNITS:
+        feats = [f for f in FEATS_U if unit_of[f] == u]
+        a, b = (float((_mk[feats].values @ c[feats].values).std()) for c in (coef, cm))
+        print(f"  {u:<9} model {a:.2f} | market {b:.2f}   " + ", ".join(f"{f} {cm[f]:+.2f}" for f in feats))
+    print(f"  context   home_flag {cm['home_flag']:+.2f}, rest_diff {cm['rest_diff']:+.2f}")
 
 # ================================================================== stage 7: current ratings and the weekly board
 TEAM_ABBR = {
