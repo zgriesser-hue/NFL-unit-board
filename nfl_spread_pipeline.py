@@ -98,11 +98,14 @@ def build_games_and_team_games():
     if os.path.exists(gl_path):
         g = g.merge(pd.read_csv(gl_path)[["game_id"] + lcols], on="game_id", how="left")
     else:
-        print("    (no game_lines.csv found: market columns left empty, out-of-sample check will be skipped)")
+        print("    (no game_lines.csv found: the out-of-sample check will use the closing spread from the NFL schedule)")
         for c in lcols:
             g[c] = np.nan
     g["mkt_open"] = -g["spread_open_wk"]
     g["mkt_close"] = -g["spread_close"]
+    if not os.path.exists(gl_path):                          # no purchased lines: use nflverse's closing spread (home favored = +)
+        g["mkt_close"] = g["mkt_close_nfl"]
+        g["mkt_open"] = g["mkt_close_nfl"]
     g["mkt_total_open"], g["mkt_total_close"] = g["total_open_wk"], g["total_close"]
     g = g.drop(columns=lcols).sort_values(["kickoff_utc", "game_id"]).reset_index(drop=True)
 
