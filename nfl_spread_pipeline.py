@@ -19,12 +19,24 @@ except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "nflreadpy"], check=False)
     import nflreadpy as nfl
 from sklearn.linear_model import Ridge
-try:                                     # Colab: store everything on Google Drive
-    from google.colab import drive
-    drive.mount("/content/drive")
+try:                                     # are we inside Colab?
+    import google.colab                  # noqa: F401
+    ON_COLAB = True
+except ImportError:
+    ON_COLAB = False                     # GitHub Actions / local machine: store inside the repo folder
+IN_COLAB = False
+if ON_COLAB:                             # Colab: store everything on Google Drive, and refuse to run without it
+    if not os.path.isdir("/content/drive/MyDrive"):
+        try:
+            from google.colab import drive
+            drive.mount("/content/drive")
+        except Exception as e:
+            print("Drive mount problem:", str(e)[:120])
+    if not os.path.isdir("/content/drive/MyDrive"):
+        raise SystemExit("Google Drive is not mounted, so your saved lines and caches can't be found. Run a cell with:\n"
+                         "  from google.colab import drive; drive.mount('/content/drive', force_remount=True)\n"
+                         "then run this again.")
     IN_COLAB = True
-except Exception:
-    IN_COLAB = False                     # GitHub Actions / local machine: store inside the repo folder
 
 # ================================================================== settings
 if IN_COLAB:
@@ -48,6 +60,8 @@ MARKET_CSV = None                    # optional: CSV with game_id, market_home_s
 SIGN_CONSTRAINED = True              # True = every weight must be >= 0 (a stat can only help the team it favors)
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(BOARD_DIR, exist_ok=True)
+print(f"Running in {'Colab (Google Drive)' if IN_COLAB else 'local / GitHub mode'}. Data folder: {OUT}. "
+      f"game_lines.csv found: {os.path.exists(f'{ODDS_DIR}/game_lines.csv')} (looked in {ODDS_DIR})")
 
 T0 = time.time()
 def log(msg):
