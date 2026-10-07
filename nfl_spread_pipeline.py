@@ -468,6 +468,58 @@ if len(_mk) > 300:
         print(f"  {u:<9} model {a:.2f} | market {b:.2f}   " + ", ".join(f"{f} {cm[f]:+.2f}" for f in feats))
     print(f"  context   home_flag {cm['home_flag']:+.2f}, rest_diff {cm['rest_diff']:+.2f}")
 
+# ---- diagnostic: does roster turnover explain what the market knows and our stats don't?
+# turnover = share of a team's snaps (by unit) played by players who were NOT on that team last season.
+# Uses whole-season snaps, so it is a test of the idea, not a pregame feature yet.
+UNIT_POS = {"O-line": ["T", "G", "C", "OT", "OG", "OL"], "Skill": ["WR", "TE", "RB", "FB"],
+            "Front": ["DE", "DT", "NT", "DL", "LB", "ILB", "OLB", "MLB", "EDGE"],
+            "Coverage": ["CB", "S", "FS", "SS", "DB"]}
+
+def roster_turnover(snap):
+    pid = "pfr_player_id" if "pfr_player_id" in snap else "player"
+    out = []
+    for u, pos in UNIT_POS.items():
+        col = "offense_snaps" if u in ("O-line", "Skill") else "defense_snaps"
+        x = snap[snap["position"].isin(pos)].groupby(["season", "team", pid])[col].sum().reset_index(name="snaps")
+        prev = x[["season", "team", pid]].copy()
+        prev["season"] += 1
+        prev["was_here"] = 1.0
+        x = x.merge(prev, on=["season", "team", pid], how="left")
+        x["kept"] = x["snaps"] * x["was_here"].fillna(0.0)
+        a = x.groupby(["season", "team"])[["snaps", "kept"]].sum()
+        a["turnover"] = 1.0 - a["kept"] / a["snaps"].replace(0, np.nan)
+        a["unit"] = u
+        out.append(a.reset_index()[["season", "team", "unit", "turnover"]])
+    return pd.concat(out)
+
+try:
+    if cm is not None:
+        _snap = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
+        if "game_type" in _snap:
+            _snap = _snap[_snap["game_type"] == "REG"]
+        tv = roster_turnover(_snap).pivot(index=["season", "team"], columns="unit", values="turnover")
+        tv = tv[tv.index.get_level_values("season") >= PBP_FROM + 1]          # needs a prior season
+        _mkr = _mk[_mk["season"] >= PBP_FROM + 1].copy()
+        mres = _mkr["mkt_close"].values - _mkr[ALL].values @ cm.values        # market beyond our data (home +)
+        gres = _mkr["home_margin"].values - _mkr[ALL].values @ coef.values    # result beyond our model (home +)
+        print("\nROSTER TURNOVER TEST: home-minus-away turnover (share of snaps from new players) vs what we miss.")
+        print("  corr_mkt = correlation with 'market beyond our data'; corr_res = with 'result beyond our model'; slope = points per +1.00 turnover difference")
+        print(f"  {'unit':<9} {'weeks':<6} {'games':>5} {'corr_mkt':>9} {'slope_mkt':>10} {'corr_res':>9} {'slope_res':>10}")
+        for u in UNIT_POS:
+            h = tv[u].reindex(pd.MultiIndex.from_arrays([_mkr["season"], _mkr["home_team"]])).values
+            a = tv[u].reindex(pd.MultiIndex.from_arrays([_mkr["season"], _mkr["away_team"]])).values
+            d = h - a
+            for label, msk in (("all", np.ones(len(d), bool)), ("1-6", (_mkr["week"] <= 6).values)):
+                ok = msk & ~np.isnan(d)
+                if ok.sum() < 100:
+                    continue
+                cmk, cr = np.corrcoef(d[ok], mres[ok])[0, 1], np.corrcoef(d[ok], gres[ok])[0, 1]
+                smk, sr = np.polyfit(d[ok], mres[ok], 1)[0], np.polyfit(d[ok], gres[ok], 1)[0]
+                print(f"  {u:<9} {label:<6} {ok.sum():>5} {cmk:>+9.3f} {smk:>+10.2f} {cr:>+9.3f} {sr:>+10.2f}")
+        print(f"  (noise level: with ~{len(_mkr)} games a correlation under about {2/np.sqrt(len(_mkr)):.2f} is indistinguishable from zero)")
+except Exception as e:
+    print("Roster turnover test skipped:", str(e)[:120])
+
 # ================================================================== stage 7: current ratings and the weekly board
 TEAM_ABBR = {
     "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF",
