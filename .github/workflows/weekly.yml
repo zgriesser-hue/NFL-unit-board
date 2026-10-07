@@ -42,6 +42,7 @@ jobs:
         run: |
           git config user.name "nfl-bot"
           git config user.email "nfl-bot@users.noreply.github.com"
-          git add boards/ forward_test_summary.csv forward_test_games.csv 2>/dev/null || true
+          git add boards/ || true
+          git add forward_test_summary.csv forward_test_games.csv 2>/dev/null || true
           git diff --cached --quiet || git commit -m "board $(date -u +%Y-%m-%dT%H:%MZ)"
           git push
