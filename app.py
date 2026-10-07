@@ -56,7 +56,7 @@ if not boards:
     st.info("No boards yet. Run the workflow from the Actions tab.")
     st.stop()
 
-tab_week, tab_game, tab_teams, tab_fwd = st.tabs(["This week", "Game", "Teams", "Forward test"])
+tab_week, tab_game, tab_teams, tab_qb, tab_fwd = st.tabs(["This week", "Game", "Teams", "QBs", "Forward test"])
 
 # ---------------------------------------------------------------- This week
 with tab_week:
@@ -128,6 +128,29 @@ with tab_teams:
     else:
         st.caption("Points vs an average team, by unit, after the latest completed games.")
         st.dataframe(t.round(1), use_container_width=True)
+
+# ---------------------------------------------------------------- QBs
+with tab_qb:
+    qg = load_csv("boards/unit_qb_grades_latest.csv")
+    if qg is None:
+        st.info("No QB grades yet. They appear after the next board run.")
+    else:
+        status = st.multiselect("Show", ["starter", "seasoned backup", "limited sample"],
+                                default=["starter", "seasoned backup"])
+        v = qg[qg["status"].isin(status)].copy()
+        team = st.selectbox("Team", ["All"] + sorted(v["team"].dropna().unique().tolist()))
+        if team != "All":
+            v = v[v["team"] == team]
+        v = v.rename(columns={"name": "QB", "team": "Team", "status": "Status",
+                              "pts_vs_avg_starter": "Pts vs avg starter", "dropbacks": "Dropbacks",
+                              "confidence": "Confidence"})
+        st.caption("Points vs the average current starter, using the model's own QB weight. "
+                   "Grades come from EPA per dropback (2019 on), pulled toward average when a QB has few "
+                   "dropbacks. Confidence is how much his own record counts. Treat backups with low "
+                   "confidence as rough.")
+        st.dataframe(v[["QB", "Team", "Status", "Pts vs avg starter", "Dropbacks", "Confidence"]]
+                     .round({"Pts vs avg starter": 1, "Confidence": 2}),
+                     hide_index=True, use_container_width=True)
 
 # ---------------------------------------------------------------- Forward test
 with tab_fwd:
