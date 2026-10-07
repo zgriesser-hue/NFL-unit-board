@@ -25,7 +25,7 @@ sched = nfl.load_schedules(seasons=sorted(b["season"].unique().tolist())).to_pan
 g = b.merge(sched[["game_id", "home_score", "away_score"]], on="game_id", how="left")
 g = g[g["home_score"].notna()].copy()
 if g.empty:
-        print("No finished games with a saved pregame board yet.")
+    print("No finished games with a saved pregame board yet.")
     raise SystemExit(0)
 g["margin"] = g["home_score"] - g["away_score"]
 g.to_csv(f"{ROOT}/forward_test_games.csv", index=False)
