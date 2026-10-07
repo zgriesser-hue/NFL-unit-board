@@ -81,6 +81,12 @@ with tab_week:
         view["Market"] = b["market_home_spread"].map(fmt_line)
         view["Edge"] = b["edge_vs_market"].round(1)
         view["Model side"] = b.apply(pick_text, axis=1)
+        if "fair_at_market_weights" in b:
+            view["At mkt wts"] = b["fair_at_market_weights"].map(fmt_line)
+            view["Not in data"] = b["market_minus_mkt_weighted"].round(1)
+    st.caption("'At mkt wts' is our same data weighted the way the market weights it. 'Not in data' is "
+               "market minus that, in points toward the home team: what our data can't explain "
+               "(injury news, roster moves, anything not in the stats).")
     st.caption("Lines are the home team's spread (negative = home favored). "
                "Edge = model minus market in points; positive means the model likes the home team more.")
     if has_mkt:
@@ -102,6 +108,10 @@ with tab_game:
     if "market_home_spread" in r and pd.notna(r["market_home_spread"]):
         c2.metric("Market", fmt_line(r["market_home_spread"]))
         c3.metric("Edge", f"{r['edge_vs_market']:+.1f}")
+        if "fair_at_market_weights" in r and pd.notna(r["fair_at_market_weights"]):
+            d1, d2 = st.columns(2)
+            d1.metric("Our data, market weights", fmt_line(r["fair_at_market_weights"]))
+            d2.metric("Market beyond our data", f"{r['market_minus_mkt_weighted']:+.1f}")
     st.caption(f"QBs: {r['away_QB']} (away) vs {r['home_QB']} (home)")
 
     contrib = pd.DataFrame({"points toward HOME": [r[u] for u in UNITS if u in r]},

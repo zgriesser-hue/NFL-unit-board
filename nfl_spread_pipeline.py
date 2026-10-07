@@ -455,8 +455,12 @@ print(f"  context   home_flag {coef['home_flag']:+.2f}, rest_diff {coef['rest_di
 
 # ---- what weights would explain the MARKET's line? (same features, same constraints, target = closing spread)
 _mk = F[F["mkt_close"].notna() & F["home_margin"].notna()]
+cm = None
 if len(_mk) > 300:
     cm = fit(_mk, ALL, target="mkt_close")
+    _resid = _mk["mkt_close"] - _mk[ALL].values @ cm.values
+    print(f"\nHow much of the market line our data can reproduce: typical miss {float(_resid.abs().mean()):.2f} pts "
+          f"(std {float(_resid.std()):.2f}); the market line itself has std {float(_mk['mkt_close'].std()):.2f}")
     print(f"\nMARKET-IMPLIED WEIGHTS fit on {len(_mk)} games (target = closing spread). Typical swing in points, model weights vs market weights:")
     for u in UNITS:
         feats = [f for f in FEATS_U if unit_of[f] == u]
@@ -605,6 +609,8 @@ for u in UNITS:
     feats = [f for f in FEATS_U if unit_of[f] == u]
     board[u] = D[feats].values @ coef[feats].values
 board["context"] = D[CTX].values @ coef[CTX].values
+if cm is not None:                                             # same features, but weighted the way the market weights them
+    board["fair_at_market_weights"] = D[ALL].values @ cm[ALL].values
 board["fair_home_spread"] = board[UNITS + ["context"]].sum(axis=1)
 if MARKET_CSV and os.path.exists(MARKET_CSV):
     board = board.merge(pd.read_csv(MARKET_CSV)[["game_id", "market_home_spread"]], on="game_id", how="left")
@@ -619,6 +625,8 @@ elif ODDS_API_KEY:
         print("Could not fetch market spreads:", str(e)[:100])
 if "market_home_spread" in board:
     board["edge_vs_market"] = board["fair_home_spread"] - board["market_home_spread"]
+    if "fair_at_market_weights" in board:                      # what our data cannot explain about the market's number
+        board["market_minus_mkt_weighted"] = board["market_home_spread"] - board["fair_at_market_weights"]
 board = board.sort_values("fair_home_spread", ascending=False).reset_index(drop=True)
 pd.set_option("display.width", 250)
 print("\nUNIT BOARD (points; positive = favors the HOME team; units sum to the fair home spread):")
