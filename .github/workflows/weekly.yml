@@ -35,6 +35,12 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: leave the secret out to skip market capture
         run: python nfl_spread_pipeline.py
 
+      - name: Build scheme profiles
+        if: github.event.schedule != '0 14 * * 2'
+        continue-on-error: true
+        run: python scheme_profiles.py
+
+
       - name: Grade past boards
         run: python grade_boards.py
 
