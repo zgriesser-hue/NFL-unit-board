@@ -194,9 +194,13 @@ with tab_sch:
         for k, lab in SCH.items():
             show[lab + " %"] = (prof[k] * 100).round(0)
         show["Style"] = prof.apply(style_label, axis=1)
-        lg = {lab: round(float(prof[k + "_league"].iloc[0]) * 100) for k, lab in SCH.items()}
-        st.dataframe(show.sort_values("Man coverage %", ascending=False), use_container_width=True)
-        st.caption("League average: " + ", ".join(f"{lab} {v}%" for lab, v in lg.items()))
+        lg = {lab: float(prof[k + "_league"].iloc[0]) * 100 for k, lab in SCH.items()}
+        st.dataframe(show.sort_values("Man coverage %", ascending=False, na_position="last"), use_container_width=True)
+        st.caption("League average: " + ", ".join(f"{lab} {v:.0f}%" for lab, v in lg.items() if pd.notna(v)))
+        missing = [lab for k, lab in SCH.items() if prof[k].notna().sum() == 0]
+        if missing:
+            st.info(f"{', '.join(missing)} not available for {season} yet: nflverse publishes the coverage charting "
+                    "(man/zone and coverage shells) with a delay. Pick the previous season to see those columns.")
 
         st.subheader("Quarterback vs a defense's scheme")
         st.warning("Treat this as context, not a prediction. In testing, QB-specific scheme splits did not hold up "
