@@ -40,6 +40,7 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY")   # optional free-tier key: captur
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 M, LAM, K_QB = 12, 0.5, 150          # prior = M games of last season's average x LAM; QB shrinkage (dropbacks)
 TEST_SEASONS = [2023, 2024, 2025]
+QB_REPLACEMENT_PRIOR = True          # True = a QB with little tape starts near what a new QB usually produces, not near average
 FORCE_REBUILD = False                # True = ignore every cache
 MAX_AGE_DAYS = 3                     # caches older than this are rebuilt
 MARKET_CSV = None                    # optional: CSV with game_id, market_home_spread (positive = home favored)
@@ -276,17 +277,27 @@ def qb_tables(K):
        latest = each team's most recent starter right now."""
     q = q0.sort_values(["passer_player_id", "kickoff_utc"]).reset_index(drop=True)
     g = q.groupby("passer_player_id")
-    q["post"] = g["epa_sum"].cumsum() / (g["db"].cumsum() + K)
+    q["post"] = (g["epa_sum"].cumsum() + K * QB_PRIOR) / (g["db"].cumsum() + K)
     st = (q.sort_values(["game_id", "posteam", "db"], ascending=[True, True, False])
             .drop_duplicates(["game_id", "posteam"]).sort_values(["posteam", "kickoff_utc"]))
+    cg = q.groupby("passer_player_id")
+    q["pre"] = ((cg["epa_sum"].cumsum() - q["epa_sum"]) + K * QB_PRIOR) / ((cg["db"].cumsum() - q["db"]) + K)
+    st = st.merge(q[["game_id", "posteam", "passer_player_id", "pre"]], on=["game_id", "posteam", "passer_player_id"], how="left")
     st["prev_post"] = st.groupby("posteam")["post"].shift(1)
-    known = pd.Series(st["prev_post"].fillna(0.0).values,
+    known = pd.Series(st["prev_post"].fillna(QB_PRIOR).values,
                       index=pd.MultiIndex.from_arrays([st["game_id"], st["posteam"]]))
     last = st.groupby("posteam").tail(1)
+    actual = pd.Series(st["pre"].values, index=pd.MultiIndex.from_arrays([st["game_id"], st["posteam"]]))
     return (known, pd.Series(last["post"].values, index=last["posteam"].values),
-            pd.Series(last["name"].values, index=last["posteam"].values))
+            pd.Series(last["name"].values, index=last["posteam"].values), actual)
 
-known, qb_post, qb_name = qb_tables(K_QB)
+# prior for a QB with no track record: how every QB did in his first two games (survivors and busts alike)
+_first = q0.sort_values("kickoff_utc").groupby("passer_player_id").head(2)
+QB_PRIOR = float(_first["epa_sum"].sum() / _first["db"].sum()) if QB_REPLACEMENT_PRIOR else 0.0
+log(f"QB prior (rating for a QB with no record): {QB_PRIOR:+.3f} EPA/dropback")
+known, qb_post, qb_name, qb_actual = qb_tables(K_QB)
+# rating of the QB who actually played, known before kickoff; team stats below embed whoever played earlier
+tg["qb_pre"] = qb_actual.reindex(pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])).fillna(QB_PRIOR).values
 
 # ================================================================== stage 5: injuries (burden = status weight x recent snap share)
 def build_injury_burden():
@@ -340,7 +351,7 @@ GR = [c for c in bur.columns if c not in ("season", "week", "team")]
 
 # ================================================================== stage 6: unit model
 # feature, unit, team-stat column in tg, sign (+1 = higher is better for the team)
-SPEC = [("qb_rating", "QB", None, +1),
+SPEC = [("qb_rating", "QB", None, +1), ("qb_swap", "QB", "qb_pre", +1),
         ("prot_press", "O-line", "press_allowed", -1), ("prot_sack", "O-line", "off_sack", -1),
         ("run_block", "O-line", "rush_ryoe", +1),
         ("sep", "Skill", "rec_sep", +1), ("yac", "Skill", "rec_yac", +1), ("drops", "Skill", "drop_rate", -1),
@@ -373,8 +384,12 @@ mi = lambda c: pd.MultiIndex.from_arrays([F["game_id"], F[c]])
 F["home_flag"] = 1 - F["neutral_site"]
 F["rest_diff"] = (F["home_rest"] - F["away_rest"]).clip(-7, 7).fillna(0.0)
 for name, unit, col, sign in SPEC:
-    if col is None:
-        F[name] = np.nan_to_num(known.reindex(mi("home_team")).values - known.reindex(mi("away_team")).values)
+    if col is None:                        # level: the QB who actually played (known before kickoff)
+        F[name] = np.nan_to_num(qb_actual.reindex(mi("home_team")).values - qb_actual.reindex(mi("away_team")).values)
+    elif name == "qb_swap":                # swap: today's QB minus the QB the team's stats were built with
+        R, mu = rating_hist("qb_pre"), tg["qb_pre"].mean()
+        sw = lambda c: qb_actual.reindex(mi(c)).values - (R.reindex(mi(c)).values + mu)
+        F[name] = np.nan_to_num(sw("home_team") - sw("away_team"))
     else:
         R = rating_hist(col)
         F[name] = sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values)
@@ -400,6 +415,8 @@ for s in TEST_SEASONS:
     tr = F[(F["season"] < s) & F["home_margin"].notna()]
     te = F[F["season"] == s].copy()
     te["pred"] = te[ALL].values @ fit(tr, ALL).values
+    _noswap = [c for c in ALL if c != "qb_swap"]
+    te["pred0"] = te[_noswap].values @ fit(tr, _noswap).values
     rows.append(te)
 r = pd.concat(rows)
 r = r[r["game_id"].isin(ok) & r["home_margin"].notna()]
@@ -408,6 +425,11 @@ if len(r):
     print(f"\nOUT-OF-SAMPLE {TEST_SEASONS} [sign-constrained: {SIGN_CONSTRAINED}], {len(r)} identical games: unit model MAE "
           f"{mae(r['pred'], r['home_margin']):.3f} | closing market {mae(r['mkt_close'], r['home_margin']):.3f} "
           f"(expect about 10.2-10.3 vs 9.74)")
+    _c = r[r["qb_swap"].abs() > 0.05]
+    if len(_c):
+        print(f"  QB-change games ({len(_c)}): with qb_swap {mae(_c['pred'], _c['home_margin']):.3f} | "
+              f"without {mae(_c['pred0'], _c['home_margin']):.3f} | closing market {mae(_c['mkt_close'], _c['home_margin']):.3f}")
+    print(f"  all games: with qb_swap {mae(r['pred'], r['home_margin']):.3f} | without {mae(r['pred0'], r['home_margin']):.3f}")
 else:
     print("\n(no market lines available: skipped the out-of-sample check)")
 
@@ -471,7 +493,7 @@ print(f"\nBuilding the board for {season_now} week {wk}. Injury report found for
 def build_qb_grades():
     q = q0.sort_values("kickoff_utc").copy()
     g = q.groupby("passer_player_id")
-    q["post"] = g["epa_sum"].cumsum() / (g["db"].cumsum() + K_QB)              # the model's own rating (shrunk EPA/dropback)
+    q["post"] = (g["epa_sum"].cumsum() + K_QB * QB_PRIOR) / (g["db"].cumsum() + K_QB)              # the model's own rating (shrunk EPA/dropback)
     age = (q["kickoff_utc"].max() - q["kickoff_utc"]).dt.days.clip(lower=0)
     q["w"] = 0.5 ** (age / 365.0)                                              # recent games count more (1-year half-life)
     q["w_epa"], q["w_db"] = q["epa_sum"] * q["w"], q["db"] * q["w"]
@@ -481,7 +503,7 @@ def build_qb_grades():
         w_epa=("w_epa", "sum"), w_db=("w_db", "sum"))
     agg["rating"] = q.groupby("passer_player_id")["post"].last()                # what the board uses
     agg["epa_per_db"] = agg["epa_sum"] / agg["dropbacks"]                       # raw, no shrinkage
-    agg["recent_rating"] = agg["w_epa"] / (agg["w_db"] + K_QB)                  # recency-weighted, shrunk
+    agg["recent_rating"] = (agg["w_epa"] + K_QB * QB_PRIOR) / (agg["w_db"] + K_QB)                  # recency-weighted, shrunk
     agg["confidence"] = agg["dropbacks"] / (agg["dropbacks"] + K_QB)            # 0..1: how much his own record counts
     starter_of = {t: n for t, n in zip(qb_name.index, qb_name.values)}
     agg["status"] = np.where(agg.apply(lambda r: starter_of.get(r["team"]) == r["name"], axis=1), "starter",
@@ -490,7 +512,7 @@ def build_qb_grades():
     agg = agg[(agg["last_game"] >= agg["last_game"].max() - pd.Timedelta(days=730))
               & (agg["status"] != "unproven")].copy()                           # active in the last two seasons
     ref = float(agg.loc[agg["status"] == "starter", "rating"].median())
-    agg["pts_vs_avg_starter"] = coef["qb_rating"] * (agg["rating"] - ref)      # in spread points, via the model weight
+    agg["pts_vs_avg_starter"] = (coef["qb_rating"] + coef["qb_swap"]) * (agg["rating"] - ref)      # in spread points, via the model weight
     out = agg.reset_index(drop=True)[["name", "team", "status", "pts_vs_avg_starter", "rating", "recent_rating",
                                       "epa_per_db", "dropbacks", "games", "confidence", "last_game"]]
     return out.sort_values("pts_vs_avg_starter", ascending=False).reset_index(drop=True)
@@ -502,6 +524,7 @@ print(pd.concat([_st.head(8), _st.tail(8)])[["name", "team", "pts_vs_avg_starter
 
 # ---- manual QB overrides: qb_overrides.csv (columns: team, qb, optional week). Applies to this week's board only.
 QB_SRC = {t: "last starter" for t in qb_name.index}
+OVR_TEAMS = set()
 _ov = os.path.join(ROOT if not IN_COLAB else OUT, "qb_overrides.csv")
 if os.path.exists(_ov):
     ov = pd.read_csv(_ov)
@@ -511,7 +534,7 @@ if os.path.exists(_ov):
     qs = q0.sort_values("kickoff_utc").copy()
     qs["key"] = qs["name"].map(nm)
     gq = qs.groupby("passer_player_id")
-    qs["post"] = gq["epa_sum"].cumsum() / (gq["db"].cumsum() + K_QB)
+    qs["post"] = (gq["epa_sum"].cumsum() + K_QB * QB_PRIOR) / (gq["db"].cumsum() + K_QB)
     bykey = qs.groupby("key").tail(1).set_index("key")["post"]           # each name's latest rating
     repl = float(qb_post.quantile(0.10))                                  # replacement level: weak current starter
     for _, o in ov.iterrows():
@@ -524,16 +547,25 @@ if os.path.exists(_ov):
         else:
             qb_post[t], src = repl, "override (no track record: replacement level)"
         qb_name[t], QB_SRC[t] = str(o["qb"]).strip(), src
+        OVR_TEAMS.add(t)
         print(f"  QB override: {t} -> {o['qb']} ({src}), rating {qb_post[t]:+.3f}")
 
 teams = sorted(set(tg["team"]))
 ADV = {}                                                     # each team's advantage per feature
 for name, unit, col, sign in SPEC:
-    ADV[name] = (qb_post - qb_post.mean()) if col is None else sign * current_rating(col)
+    if col is None:
+        ADV[name] = qb_post - qb_post.mean()
+    elif name == "qb_swap":                                  # current starter vs the QB the team's stats were built with
+        _cur = current_rating("qb_pre")
+        ADV[name] = qb_post.reindex(_cur.index) - (_cur + tg["qb_pre"].mean())
+    else:
+        ADV[name] = sign * current_rating(col)
 def burden(t, groups):
     return float(sum(bw.loc[t, g] for g in groups if t in bw.index and g in bw.columns))
 for name, unit, groups in INJ:
     ADV[name] = pd.Series({t: -burden(t, groups) for t in teams})
+for t in OVR_TEAMS:                                          # the override already replaced the QB: no extra injury penalty
+    ADV["qb_inj"][t] = 0.0
 
 up = games[(games["season"] == season_now) & (games["week"] == wk) & (games["is_playoff"] == 0)].copy()
 D = pd.DataFrame(index=up.index)
