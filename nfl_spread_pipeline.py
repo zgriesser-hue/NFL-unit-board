@@ -59,6 +59,11 @@ FORCE_REBUILD = False                # True = ignore every cache
 MAX_AGE_DAYS = 3                     # caches older than this are rebuilt
 MARKET_CSV = None                    # optional: CSV with game_id, market_home_spread (positive = home favored)
 SIGN_CONSTRAINED = True              # True = every weight must be >= 0 (a stat can only help the team it favors)
+# ---- opt-in rating variants (defaults reproduce the current model exactly; EXPERIMENTS=1 tests them side by side)
+RATING_DECAY = float(os.environ.get("RATING_DECAY", "1.0"))   # in-season game weight: 1.0 = equal; 0.9 = each older game counts 10% less
+OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game's stat for the opponent's pregame strength
+EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
+EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(BOARD_DIR, exist_ok=True)
 print(f"Running in {'Colab (Google Drive)' if IN_COLAB else 'local / GitHub mode'}. Data folder: {OUT}. "
@@ -387,6 +392,8 @@ SPEC = [("qb_rating", "QB", None, +1), ("qb_swap", "QB", "qb_pre", +1),
         ("press_gen", "Front", "press_gen", +1), ("sack_gen", "Front", "def_sack", +1),
         ("run_def", "Front", "def_rush", -1),
         ("pass_def", "Coverage", "def_pass", -1)]
+if EXTRA_FEATS:
+    SPEC += [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
 INJ = [("qb_inj", "QB", ["QB"]), ("ol_inj", "O-line", ["OL"]), ("sk_inj", "Skill", ["WR", "TE", "RB"]),
        ("fr_inj", "Front", ["DL", "LB"]), ("cov_inj", "Coverage", ["DB"])]
 UNITS = ["QB", "O-line", "Skill", "Front", "Coverage"]
@@ -436,14 +443,45 @@ def cont_lookup(tab, seasons, weeks, teams):
     return m.sort_values("i")["cont"].values
 
 key = pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])
-def rating_hist(col):
-    """Pregame rating of every team before every game: this season's earlier games + last season's average."""
-    z = (tg[col] - tg[col].mean()).fillna(0.0)
-    tg["_z"] = z
-    pm = tg.groupby(["team", "season"])["_z"].mean().reset_index()
+# Which opposing stat each rating is measured against: a defense's EPA allowed is expected to be higher against a
+# strong offense, a line's sacks taken higher against a strong pass rush, and so on.
+ADJ_PAIR = {"press_allowed": "press_gen", "press_gen": "press_allowed", "off_sack": "def_sack",
+            "def_sack": "off_sack", "def_rush": "off_rush", "off_rush": "def_rush",
+            "def_pass": "off_pass", "off_pass": "def_pass"}
+
+def _prev_sums(vals, decay):
+    """Weighted sum and weight of this team's PREVIOUS games this season (current game excluded)."""
+    S, N = np.zeros(len(vals)), np.zeros(len(vals))
+    for idx in GROUPS.values():
+        acc = nef = 0.0
+        for i in idx:
+            S[i], N[i] = acc, nef
+            acc, nef = decay * acc + vals[i], decay * nef + 1.0
+    return S, N
+
+def stat_col(col, decay, adj):
+    """Column to rate: the raw team-game stat, or (adj=True) the stat minus the opponent's pregame rating of the
+    matching opposing stat. Uses only games before each game, so it is safe for the backtest."""
+    if not adj or col not in ADJ_PAIR:
+        return col
+    name = f"{col}__adj{decay:g}"
+    if name not in tg.columns:
+        R = rating_hist(ADJ_PAIR[col], decay, False)
+        tg[name] = tg[col] - R.reindex(pd.MultiIndex.from_arrays([tg["game_id"], tg["opp"]])).fillna(0.0).values
+    return name
+
+def rating_hist(col, decay=None, adj=None):
+    """Pregame rating of every team before every game: this season's earlier games + last season's average.
+    decay < 1 weights recent games more; adj=True is opponent-adjusted."""
+    decay = RATING_DECAY if decay is None else decay
+    adj = OPP_ADJ if adj is None else adj
+    c = stat_col(col, decay, adj)
+    z = (tg[c] - tg[c].mean()).fillna(0.0).to_numpy()
+    pm = pd.DataFrame({"team": tg["team"].values, "season": tg["season"].values, "z": z}).groupby(
+        ["team", "season"])["z"].mean().reset_index()
     pm["season"] += 1
-    prior = tg[["team", "season"]].merge(pm, on=["team", "season"], how="left")["_z"].fillna(0.0).values
-    S, N = prev_sums("_z", 1.0)
+    prior = tg[["team", "season"]].merge(pm, on=["team", "season"], how="left")["z"].fillna(0.0).values
+    S, N = _prev_sums(z, decay)
     return pd.Series((S + M * LAM * prior) / (N + M), index=key)
 
 log("building the training frame ...")
@@ -538,6 +576,56 @@ if len(r):
     print(f"  all games: with qb_swap {mae(r['pred'], r['home_margin']):.3f} | without {mae(r['pred0'], r['home_margin']):.3f}")
 else:
     print("\n(no market lines available: skipped the out-of-sample check)")
+
+# ---- experiments: rating variants side by side (set EXPERIMENTS=1). Same games, same fit, paired by game.
+def run_experiments():
+    spec_base = [x for x in SPEC if x[0] not in ("run_off", "pass_off")]
+    extra_spec = [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
+    inj_cols = [i[0] for i in INJ] + CONT_NAMES
+
+    def frame(spec, decay, adj):
+        Fv = F.copy()
+        for name, unit, col, sign in spec:
+            if col is None or name == "qb_swap":
+                continue                                           # QB terms do not depend on the variant
+            R = rating_hist(col, decay, adj)
+            Fv[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
+        return Fv
+
+    def oos(Fv, feats):
+        errs = []
+        for sn in TEST_SEASONS:
+            tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
+            te = Fv[(Fv["season"] == sn) & Fv["game_id"].isin(ok)]
+            errs.append(np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values))
+        return np.concatenate(errs)
+
+    variants = [("baseline (current model)", 1.0, False, False),
+                ("recency decay 0.95", 0.95, False, False), ("recency decay 0.90", 0.90, False, False),
+                ("recency decay 0.80", 0.80, False, False),
+                ("opponent-adjusted", 1.0, True, False),
+                ("opponent-adjusted + decay 0.90", 0.90, True, False),
+                ("+ offensive rush/pass EPA", 1.0, False, True),
+                ("opp-adjusted + offensive rush/pass EPA", 1.0, True, True)]
+    print("\nEXPERIMENTS: rating variants, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
+    base = None
+    for label, decay, adj, extra in variants:
+        spec = spec_base + (extra_spec if extra else [])
+        Fv = frame(spec, decay, adj)
+        feats = [x[0] for x in spec] + inj_cols + CTX
+        e = oos(Fv, feats)
+        if base is None:
+            base = e
+            print(f"  {label:<42} {e.mean():.3f}   ({len(e)} games; closing market {mae(r['mkt_close'], r['home_margin']):.3f})")
+            continue
+        d = base - e                                                # + = better than baseline
+        ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+        verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
+        print(f"  {label:<42} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
+    print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS for the weekly run)")
+
+if EXPERIMENTS and len(r):
+    run_experiments()
 
 # ---- the opener: Monday-noon line from game_lines.csv (only meaningful when that file is present)
 if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
@@ -784,13 +872,19 @@ def fetch_market_spreads(key):
     return pd.DataFrame(rows)
 
 season_now = int(games.loc[games["home_margin"].notna(), "season"].max())
-def current_rating(col):
-    z = (tg[col] - tg[col].mean()).fillna(0.0)
+def current_rating(col, decay=None, adj=None):
+    decay = RATING_DECAY if decay is None else decay
+    adj = OPP_ADJ if adj is None else adj
+    c = stat_col(col, decay, adj)
+    z = (tg[c] - tg[c].mean()).fillna(0.0)
     now, last = tg["season"] == season_now, tg["season"] == season_now - 1
-    agg = z[now].groupby(tg.loc[now, "team"]).agg(["sum", "count"])
     pr = z[last].groupby(tg.loc[last, "team"]).mean()
-    return pd.Series({t: (agg["sum"].get(t, 0.0) + M * LAM * pr.get(t, 0.0)) / (agg["count"].get(t, 0.0) + M)
-                      for t in sorted(set(tg["team"]))})
+    out = {}
+    for t in sorted(set(tg["team"])):
+        v = z[now & (tg["team"] == t)].to_numpy()               # tg is in time order within each team
+        w = decay ** np.arange(len(v) - 1, -1, -1)
+        out[t] = ((w * v).sum() + M * LAM * pr.get(t, 0.0)) / (w.sum() + M)
+    return pd.Series(out)
 
 wk = int(games[(games["season"] == season_now) & (games["is_playoff"] == 0)
                & games["home_margin"].isna()]["week"].min())
