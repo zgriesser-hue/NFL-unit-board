@@ -62,6 +62,7 @@ SIGN_CONSTRAINED = True              # True = every weight must be >= 0 (a stat 
 # ---- opt-in rating variants (defaults reproduce the current model exactly; EXPERIMENTS=1 tests them side by side)
 RATING_DECAY = float(os.environ.get("RATING_DECAY", "1.0"))   # in-season game weight: 1.0 = equal; 0.9 = each older game counts 10% less
 OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game's stat for the opponent's pregame strength
+RET_PRIOR = os.environ.get("RET_PRIOR", "") == "1"                # trust last season less for units whose roster turned over
 NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl, succ (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
@@ -499,7 +500,9 @@ def stat_col(col, decay, adj):
         tg[name] = tg[col] - R.reindex(pd.MultiIndex.from_arrays([tg["game_id"], tg["opp"]])).fillna(0.0).values
     return name
 
-def rating_hist(col, decay=None, adj=None):
+RET = {}          # unit -> Series indexed by (season, team): relative share of last season's snaps still on the roster
+
+def rating_hist(col, decay=None, adj=None, unit=None):
     """Pregame rating of every team before every game: this season's earlier games + last season's average.
     decay < 1 weights recent games more; adj=True is opponent-adjusted."""
     decay = RATING_DECAY if decay is None else decay
@@ -510,12 +513,49 @@ def rating_hist(col, decay=None, adj=None):
         ["team", "season"])["z"].mean().reset_index()
     pm["season"] += 1
     prior = tg[["team", "season"]].merge(pm, on=["team", "season"], how="left")["z"].fillna(0.0).values
+    if unit is not None and unit in RET:                       # last season counts less where the roster turned over
+        prior = prior * RET[unit].reindex(pd.MultiIndex.from_arrays([tg["season"], tg["team"]])).fillna(1.0).values
     S, N = _prev_sums(z, decay)
     return pd.Series((S + M * LAM * prior) / (N + M), index=key)
 
 log("building the training frame ...")
 SNAP = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
 CONT_TAB = build_continuity(SNAP) if CONT_NAMES else {}
+
+def build_returning(snap):
+    """Per unit and (season, team): share of LAST season's snaps (at that unit) played by players on this season's
+    week-1 roster, divided by the league average that season (1.0 = typical). Known before kickoff of week 1."""
+    pid = "pfr_player_id" if "pfr_player_id" in snap else "player"
+    try:
+        rw = nfl.load_rosters_weekly(seasons=list(range(PBP_FROM + 1, LAST_SEASON + 1))).to_pandas()
+    except Exception:
+        rw = nfl.load_rosters(seasons=list(range(PBP_FROM + 1, LAST_SEASON + 1))).to_pandas()
+    rid = next((c for c in ("pfr_id", "pfr_player_id") if c in rw.columns), None)
+    if rid is None:
+        raise RuntimeError("roster table has no PFR id column")
+    if "week" in rw:
+        rw = rw[rw["week"] == rw.groupby("season")["week"].transform("min")]
+    if "status" in rw:
+        rw = rw[rw["status"].isin(["ACT", "RES", "INA", "Active", "Reserve/Injured"]) | rw["status"].isna()]
+    cur = rw[["season", "team", rid]].dropna().drop_duplicates().rename(columns={rid: pid})
+    sn = snap[snap["game_type"] == "REG"] if "game_type" in snap else snap
+    out = {}
+    for u, pos in UNIT_POS.items():
+        col = "offense_snaps" if u in ("O-line", "Skill") else "defense_snaps"
+        x = sn[sn["position"].isin(pos)].groupby(["season", "team", pid])[col].sum().reset_index(name="snaps")
+        x["season"] += 1                                       # last season's snaps, attached to the season they feed
+        x = x.merge(cur.assign(here=1.0), on=["season", "team", pid], how="left")
+        x["kept"] = x["snaps"] * x["here"].fillna(0.0)
+        a = x.groupby(["season", "team"])[["snaps", "kept"]].sum()
+        share = a["kept"] / a["snaps"].replace(0, np.nan)
+        out[u] = (share / share.groupby(level="season").transform("mean")).clip(0.4, 1.3)
+    return out
+
+try:
+    RET.update(build_returning(SNAP))
+    log("returning-roster shares built (" + ", ".join(f"{u}: {RET[u].std():.2f} sd" for u in RET) + ")")
+except Exception as e:
+    print("returning-roster shares skipped:", str(e)[:150])
 F = games[games["is_playoff"] == 0].copy().reset_index(drop=True)
 mi = lambda c: pd.MultiIndex.from_arrays([F["game_id"], F[c]])
 F["home_flag"] = 1 - F["neutral_site"]
@@ -528,7 +568,7 @@ for name, unit, col, sign in SPEC:
         sw = lambda c: qb_actual.reindex(mi(c)).values - (R.reindex(mi(c)).values + mu)
         F[name] = np.nan_to_num(sw("home_team") - sw("away_team"))
     else:
-        R = rating_hist(col)
+        R = rating_hist(col, unit=unit if RET_PRIOR else None)
         F[name] = sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values)
 F["qb_known"] = np.nan_to_num(known.reindex(mi("home_team")).values - known.reindex(mi("away_team")).values)
 for side in ("home", "away"):
@@ -613,12 +653,12 @@ def run_experiments():
     extra_spec = [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
     inj_cols = [i[0] for i in INJ] + CONT_NAMES
 
-    def frame(spec, decay, adj):
+    def frame(spec, decay, adj, ret=False):
         Fv = F.copy()
         for name, unit, col, sign in spec:
             if col is None or name == "qb_swap":
                 continue                                           # QB terms do not depend on the variant
-            R = rating_hist(col, decay, adj)
+            R = rating_hist(col, decay, adj, unit if ret else None)
             Fv[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
         return Fv
 
@@ -642,12 +682,17 @@ def run_experiments():
                 ("+ explosive-play rate (off and def)", 1.0, False, False, ["xpl"]),
                 ("+ all three new stats", 1.0, False, False, ["cpoe", "early", "xpl"]),
                 ("+ success rate, pass and rush (off and def)", 1.0, False, False, ["succ"]),
-                ("+ all four new stat groups", 1.0, False, False, ["cpoe", "early", "xpl", "succ"])]
+                ("+ all four new stat groups", 1.0, False, False, ["cpoe", "early", "xpl", "succ"]),
+                ("last season trusted less after roster turnover", 1.0, False, False, [], True)]
+    variants = [v if len(v) == 6 else v + (False,) for v in variants]
+    if not RET:
+        variants = [v for v in variants if not v[5]]
+        print("  (roster-turnover variant skipped: returning-roster shares could not be built)")
     print("\nEXPERIMENTS: rating variants, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     base = None
-    for label, decay, adj, extra, groups in variants:
+    for label, decay, adj, extra, groups, ret in variants:
         spec = spec_base + (extra_spec if extra else []) + [f for g in groups for f in NEW_GROUPS[g]]
-        Fv = frame(spec, decay, adj)
+        Fv = frame(spec, decay, adj, ret)
         feats = [x[0] for x in spec] + inj_cols + CTX
         e = oos(Fv, feats)
         if base is None:
@@ -658,7 +703,7 @@ def run_experiments():
         ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
         verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
         print(f"  {label:<42} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
-    print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS / NEW_FEATS for the weekly run)")
+    print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS / NEW_FEATS / RET_PRIOR for the weekly run)")
 
 if EXPERIMENTS and len(r):
     run_experiments()
@@ -908,18 +953,19 @@ def fetch_market_spreads(key):
     return pd.DataFrame(rows)
 
 season_now = int(games.loc[games["home_margin"].notna(), "season"].max())
-def current_rating(col, decay=None, adj=None):
+def current_rating(col, decay=None, adj=None, unit=None):
     decay = RATING_DECAY if decay is None else decay
     adj = OPP_ADJ if adj is None else adj
     c = stat_col(col, decay, adj)
     z = (tg[c] - tg[c].mean()).fillna(0.0)
     now, last = tg["season"] == season_now, tg["season"] == season_now - 1
     pr = z[last].groupby(tg.loc[last, "team"]).mean()
+    rf = RET[unit].xs(season_now, level="season") if unit is not None and unit in RET and season_now in RET[unit].index.get_level_values("season") else None
     out = {}
     for t in sorted(set(tg["team"])):
         v = z[now & (tg["team"] == t)].to_numpy()               # tg is in time order within each team
         w = decay ** np.arange(len(v) - 1, -1, -1)
-        out[t] = ((w * v).sum() + M * LAM * pr.get(t, 0.0)) / (w.sum() + M)
+        out[t] = ((w * v).sum() + M * LAM * pr.get(t, 0.0) * (rf.get(t, 1.0) if rf is not None else 1.0)) / (w.sum() + M)
     return pd.Series(out)
 
 wk = int(games[(games["season"] == season_now) & (games["is_playoff"] == 0)
@@ -1074,7 +1120,7 @@ for name, unit, col, sign in SPEC:
         _cur = current_rating("qb_pre")
         ADV[name] = qb_post.reindex(_cur.index) - (_cur + tg["qb_pre"].mean())
     else:
-        ADV[name] = sign * current_rating(col)
+        ADV[name] = sign * current_rating(col, unit=unit if RET_PRIOR else None)
 def burden(t, groups):
     return float(sum(bw.loc[t, g] for g in groups if t in bw.index and g in bw.columns))
 for name, unit, groups in INJ:
