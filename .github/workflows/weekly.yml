@@ -6,6 +6,11 @@ on:
     - cron: "0 22 * * 5"   # Friday 22:00 UTC: board after the final injury report
     - cron: "0 14 * * 2"   # Tuesday 14:00 UTC: grade last week's games
   workflow_dispatch:        # lets you run it by hand from the Actions tab
+    inputs:
+      experiments:
+        description: "Test rating variants (opponent adjustment, recency decay, extra EPA stats) side by side"
+        type: boolean
+        default: false
 
 permissions:
   contents: write           # so the job can commit the board files
@@ -33,6 +38,10 @@ jobs:
         if: github.event.schedule != '0 14 * * 2'   # the Tuesday run only grades, so it skips the board and the odds call
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: leave the secret out to skip market capture
+          EXPERIMENTS: ${{ inputs.experiments && '1' || '' }}
+          RATING_DECAY: ${{ vars.RATING_DECAY || '1.0' }}     # set as repository variables only after the experiment shows a clear gain
+          OPP_ADJ: ${{ vars.OPP_ADJ || '' }}
+          EXTRA_FEATS: ${{ vars.EXTRA_FEATS || '' }}
         run: python nfl_spread_pipeline.py
 
       - name: Build scheme profiles
