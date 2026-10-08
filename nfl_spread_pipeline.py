@@ -65,6 +65,7 @@ OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game
 RET_PRIOR = os.environ.get("RET_PRIOR", "") == "1"                # trust last season less for units whose roster turned over
 NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl, succ (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
+SCHEME_TEST = os.environ.get("SCHEME_TEST", "") == "1"            # test: defensive scheme (blitz, man/zone, two-high) matched against how each offense handles it
 SKILLQ = os.environ.get("SKILLQ", "") == "1"                      # test: rate receivers/backs individually and build the Skill unit from the expected lineup
 BACKTEST = os.environ.get("BACKTEST", "") == "1"                  # deeper backtest of completion % over expected and success rate
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
@@ -98,7 +99,7 @@ def get_pbp():
         _PBP = (nfl.load_pbp(seasons=list(range(PBP_FROM, LAST_SEASON + 1)))
                    .select(["game_id", "posteam", "defteam", "play_type", "epa", "success", "wp", "sack",
                             "qb_dropback", "qb_epa", "passer_player_id", "passer_player_name",
-                            "cpoe", "down", "yards_gained", "receiver_player_id", "rusher_player_id"]).to_pandas())
+                            "cpoe", "down", "yards_gained", "receiver_player_id", "rusher_player_id", "play_id"]).to_pandas())
     return _PBP
 
 # ================================================================== stage 1: games + team-games
@@ -853,6 +854,126 @@ def run_skillq():
 
 if SKILLQ and len(r):
     run_skillq()
+
+# ---- scheme matchup test: does a defense's scheme, matched against how the opposing offense handles it, predict margin?
+# Uses FTN charting (blitz, 2022+) and participation (man/zone, coverage shell). Pregame and within-season only,
+# because the charting labels for man/zone and shells shift between seasons.
+def build_scheme_matchups(K=150.0, DB=37.0):
+    import scheme_profiles as SP
+    pbp = get_pbp()
+    d = pbp[(pbp["qb_dropback"] == 1) & pbp["epa"].notna() & pbp["posteam"].notna() & pbp["defteam"].notna()][
+        ["game_id", "play_id", "posteam", "defteam", "epa"]].copy()
+    d = d.merge(tg[["game_id", "season", "week"]].drop_duplicates(), on="game_id")             # regular season only
+    seasons = sorted(set(d["season"]) & set(range(2022, LAST_SEASON + 1)))
+    d = d[d["season"].isin(seasons)]
+    part, ftn = [], []
+    for y in seasons:
+        f = SP.fetch("pbp_participation", "pbp_participation", "csv", y)
+        if f:
+            x = pd.read_csv(f, usecols=["nflverse_game_id", "play_id", "defense_man_zone_type", "defense_coverage_type"])
+            part.append(x.rename(columns={"nflverse_game_id": "game_id"}))
+        f = SP.fetch("ftn_charting", "ftn", "csv", y)
+        if f:
+            x = pd.read_csv(f, usecols=["nflverse_game_id", "nflverse_play_id", "n_blitzers"])
+            ftn.append(x.rename(columns={"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"}))
+    if not part and not ftn:
+        raise RuntimeError("could not download FTN or participation files")
+    if part:
+        d = d.merge(pd.concat(part).drop_duplicates(["game_id", "play_id"]), on=["game_id", "play_id"], how="left")
+    if ftn:
+        d = d.merge(pd.concat(ftn).drop_duplicates(["game_id", "play_id"]), on=["game_id", "play_id"], how="left")
+    for c in ("defense_man_zone_type", "defense_coverage_type", "n_blitzers"):
+        if c not in d:
+            d[c] = np.nan
+    flags = {"blitz": np.where(d["n_blitzers"].notna(), (d["n_blitzers"] >= 1).astype(float), np.nan),
+             "man": np.where(d["defense_man_zone_type"].notna(), (d["defense_man_zone_type"] == "MAN_COVERAGE").astype(float), np.nan),
+             "twohigh": np.where(d["defense_coverage_type"].notna(), d["defense_coverage_type"].isin(["COVER_2", "COVER_4", "COVER_6"]).astype(float), np.nan)}
+    out = {}
+    for name, fl in flags.items():
+        q = d.assign(f=fl).dropna(subset=["f"])
+        if len(q) < 5000:
+            continue
+        q["e1"], q["e0"] = q["epa"] * q["f"], q["epa"] * (1 - q["f"])
+        q["n1"], q["n0"] = q["f"], 1 - q["f"]
+        off = q.groupby(["season", "week", "posteam"])[["e1", "e0", "n1", "n0"]].sum()
+        dfn = q.groupby(["season", "week", "defteam"])[["n1", "n0"]].sum()
+        lg = q.groupby(["season", "week"])[["e1", "e0", "n1", "n0"]].sum()
+        for tab in (off, dfn):
+            tab.index.names = ["season", "week", "team"]
+        def prior(tab, by):                         # totals over EARLIER weeks of the same season
+            t = tab.sort_index()
+            c = t.groupby(level=by).cumsum() - t
+            return c
+        offc, dfnc = prior(off, ["season", "team"]), prior(dfn, ["season", "team"])
+        lgc = lg.groupby(level="season").cumsum() - lg
+        allw = tg[["season", "week", "team"]].drop_duplicates().set_index(["season", "week", "team"]).index
+        allw = allw[allw.get_level_values("season").isin(seasons)]
+        o = offc.reindex(allw).fillna(0.0)
+        dd = dfnc.reindex(allw).fillna(0.0)
+        L = lgc.reindex(pd.MultiIndex.from_arrays([allw.get_level_values("season"), allw.get_level_values("week")])).fillna(0.0)
+        L.index = allw
+        le1 = (L["e1"] / L["n1"].replace(0, np.nan)).fillna(0.0)
+        le0 = (L["e0"] / L["n0"].replace(0, np.nan)).fillna(0.0)
+        lrate = (L["n1"] / (L["n1"] + L["n0"]).replace(0, np.nan)).fillna(0.0)
+        gap = ((o["e1"] + K * le1) / (o["n1"] + K) - (o["e0"] + K * le0) / (o["n0"] + K)) - (le1 - le0)   # how much better than typical this offense does vs the scheme
+        dev = (dd["n1"] + K * lrate) / (dd["n1"] + dd["n0"] + K) - lrate                                    # how much more than typical this defense uses it
+        out[name] = pd.DataFrame({"gap": gap.fillna(0.0), "dev": dev.fillna(0.0)})
+    if not out:
+        raise RuntimeError("no scheme data matched")
+    res = {}
+    for name, t in out.items():
+        res[name] = lambda season, week, off_team, def_team, t=t: (
+            t["gap"].reindex(pd.MultiIndex.from_arrays([season, week, off_team])).fillna(0.0).values *
+            t["dev"].reindex(pd.MultiIndex.from_arrays([season, week, def_team])).fillna(0.0).values * DB)
+    return res
+
+def run_scheme():
+    base_spec = [x for x in SPEC if x[0] not in {f[0] for g in NEW_GROUPS.values() for f in g}]
+    inj_cols = [i[0] for i in INJ] + CONT_NAMES
+    seasons = [sn for sn in range(2023, 2026) if sn in set(F["season"])]
+    Fb = F.copy()
+    for name, unit, col, sign in base_spec:
+        if col is None or name == "qb_swap":
+            continue
+        R = rating_hist(col, unit=unit if RET_PRIOR else None)
+        Fb[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
+    def run(Fv, feats):
+        parts = []
+        for sn in seasons:
+            tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
+            te = Fv[(Fv["season"] == sn) & Fv["home_margin"].notna()].copy()
+            te["err"] = np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values)
+            parts.append(te[["game_id", "season", "week", "err"]])
+        return pd.concat(parts).reset_index(drop=True), fit(Fv[Fv["home_margin"].notna()], feats)
+    base_feats = [x[0] for x in base_spec] + inj_cols + CTX
+    base, _ = run(Fb, base_feats)
+    print("\nSCHEME MATCHUP TEST: defensive scheme vs how the opposing offense handles it (positive change = better)")
+    print(f"  seasons tested {seasons}; {len(base)} games; baseline miss {base['err'].mean():.3f}")
+    try:
+        M = build_scheme_matchups()
+    except Exception as e:
+        print(f"  skipped ({str(e)[:140]})")
+        return
+    for k in M:
+        h = M[k](Fb["season"].values, Fb["week"].values, Fb["home_team"].values, Fb["away_team"].values)
+        a = M[k](Fb["season"].values, Fb["week"].values, Fb["away_team"].values, Fb["home_team"].values)
+        Fb["sch_" + k] = h - a                                                      # + = home offense gains more from this matchup
+    print("  typical size of each matchup (points, home minus away): " + ", ".join(f"{k} {Fb['sch_' + k].std():.2f}" for k in M))
+    for label, ks in [(k, [k]) for k in M] + ([("all together", list(M))] if len(M) > 1 else []):
+        feats = base_feats + ["sch_" + k for k in ks]
+        cur, w = run(Fb, feats)
+        d = base["err"].values - cur["err"].values
+        ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+        print(f"\n  {label}: overall {cur['err'].mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}   better in {100 * (d > 0).mean():.0f}% of games")
+        for sn in seasons:
+            m = (cur["season"] == sn).values
+            print(f"    {sn}: change {d[m].mean():+.3f} +/- {1.96 * d[m].std(ddof=1) / np.sqrt(m.sum()):.3f}")
+        for nm, m in (("weeks 1-6", (cur["week"] <= 6).values), ("weeks 7+", (cur["week"] > 6).values)):
+            print(f"    {nm:<10} change {d[m].mean():+.3f} +/- {1.96 * d[m].std(ddof=1) / np.sqrt(m.sum()):.3f}  ({m.sum()} games)")
+        print("    weights: " + ", ".join(f"sch_{k} {w['sch_' + k]:+.2f}" for k in ks) + "  (0 = ignored)")
+
+if SCHEME_TEST and len(r):
+    run_scheme()
 
 # ---- the opener: Monday-noon line from game_lines.csv (only meaningful when that file is present)
 if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
