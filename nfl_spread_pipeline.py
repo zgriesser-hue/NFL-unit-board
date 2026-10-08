@@ -65,6 +65,7 @@ OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game
 RET_PRIOR = os.environ.get("RET_PRIOR", "") == "1"                # trust last season less for units whose roster turned over
 NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl, succ (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
+BACKTEST = os.environ.get("BACKTEST", "") == "1"                  # deeper backtest of completion % over expected and success rate
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(BOARD_DIR, exist_ok=True)
@@ -707,6 +708,55 @@ def run_experiments():
 
 if EXPERIMENTS and len(r):
     run_experiments()
+
+# ---- deeper backtest of the two most promising candidates: completion % over expected and success rate.
+# Season by season, early vs late weeks, share of games improved, and the weights the model actually gives them.
+def run_backtest():
+    base_spec = [x for x in SPEC if x[0] not in {f[0] for g in NEW_GROUPS.values() for f in g}]
+    inj_cols = [i[0] for i in INJ] + CONT_NAMES
+    seasons = [sn for sn in range(2022, 2026) if sn in set(F["season"])]            # 2022 trains on only 2020-21: a rough extra check
+    def frame(spec):
+        Fv = F.copy()
+        for name, unit, col, sign in spec:
+            if col is None or name == "qb_swap":
+                continue
+            R = rating_hist(col, unit=unit if RET_PRIOR else None)
+            Fv[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
+        return Fv
+    def run(spec):
+        Fv = frame(spec)
+        feats = [x[0] for x in spec] + inj_cols + CTX
+        parts = []
+        for sn in seasons:
+            tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
+            te = Fv[(Fv["season"] == sn) & Fv["home_margin"].notna()].copy()
+            te["err"] = np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values)
+            parts.append(te[["game_id", "season", "week", "err"]])
+        return pd.concat(parts).reset_index(drop=True), fit(Fv[Fv["home_margin"].notna()], feats)
+    cands = [("completion % over expected", ["cpoe"]), ("success rate", ["succ"]), ("both together", ["cpoe", "succ"])]
+    base, _ = run(base_spec)
+    print("\nBACKTEST: completion % over expected and success rate vs the current model (positive change = better)")
+    print(f"  seasons tested {seasons}; {len(base)} games; each season is trained only on earlier seasons")
+    for label, groups in cands:
+        spec = base_spec + [f for g in groups for f in NEW_GROUPS[g]]
+        cur, w = run(spec)
+        d = base["err"].values - cur["err"].values
+        ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+        print(f"\n  {label}: overall {cur['err'].mean():.3f} vs {base['err'].mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}"
+              f"   better in {100 * (d > 0).mean():.0f}% of games")
+        for sn in seasons:
+            m = (cur["season"] == sn).values
+            dd = d[m]
+            print(f"    {sn}: {cur['err'][m].mean():.3f} vs {base['err'][m].mean():.3f}   change {dd.mean():+.3f} +/- {1.96 * dd.std(ddof=1) / np.sqrt(len(dd)):.3f}")
+        for nm, m in (("weeks 1-6", (cur["week"] <= 6).values), ("weeks 7+", (cur["week"] > 6).values)):
+            dd = d[m]
+            print(f"    {nm:<10} change {dd.mean():+.3f} +/- {1.96 * dd.std(ddof=1) / np.sqrt(len(dd)):.3f}  ({m.sum()} games)")
+        newf = [f[0] for g in groups for f in NEW_GROUPS[g]]
+        print("    weights the model gives them (0 = it ignored the stat): " + ", ".join(f"{n} {w[n]:+.1f}" for n in newf))
+    print("  (a real gain should show up in most seasons, not just one; a +/- band that spans zero means it could be noise)")
+
+if BACKTEST and len(r):
+    run_backtest()
 
 # ---- the opener: Monday-noon line from game_lines.csv (only meaningful when that file is present)
 if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
