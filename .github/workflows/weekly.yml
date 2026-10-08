@@ -42,6 +42,7 @@ jobs:
           RATING_DECAY: ${{ vars.RATING_DECAY || '1.0' }}     # set as repository variables only after the experiment shows a clear gain
           OPP_ADJ: ${{ vars.OPP_ADJ || '' }}
           EXTRA_FEATS: ${{ vars.EXTRA_FEATS || '' }}
+          NEW_FEATS: ${{ vars.NEW_FEATS || '' }}                 # e.g. cpoe,early,xpl or all
         run: python nfl_spread_pipeline.py
 
       - name: Build scheme profiles
