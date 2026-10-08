@@ -11,6 +11,10 @@ on:
         description: "Test rating variants (opponent adjustment, recency decay, extra EPA stats) side by side"
         type: boolean
         default: false
+      skillq:
+        description: "Test rating receivers and backs individually (player quality) for the Skill unit"
+        type: boolean
+        default: false
       backtest:
         description: "Season-by-season backtest of completion % over expected and success rate"
         type: boolean
@@ -44,6 +48,7 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: leave the secret out to skip market capture
           EXPERIMENTS: ${{ inputs.experiments && '1' || '' }}
           BACKTEST: ${{ inputs.backtest && '1' || '' }}
+          SKILLQ: ${{ inputs.skillq && '1' || '' }}
           RATING_DECAY: ${{ vars.RATING_DECAY || '1.0' }}     # set as repository variables only after the experiment shows a clear gain
           OPP_ADJ: ${{ vars.OPP_ADJ || '' }}
           EXTRA_FEATS: ${{ vars.EXTRA_FEATS || '' }}

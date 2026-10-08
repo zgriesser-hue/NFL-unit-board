@@ -65,6 +65,7 @@ OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game
 RET_PRIOR = os.environ.get("RET_PRIOR", "") == "1"                # trust last season less for units whose roster turned over
 NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl, succ (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
+SKILLQ = os.environ.get("SKILLQ", "") == "1"                      # test: rate receivers/backs individually and build the Skill unit from the expected lineup
 BACKTEST = os.environ.get("BACKTEST", "") == "1"                  # deeper backtest of completion % over expected and success rate
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
@@ -97,7 +98,7 @@ def get_pbp():
         _PBP = (nfl.load_pbp(seasons=list(range(PBP_FROM, LAST_SEASON + 1)))
                    .select(["game_id", "posteam", "defteam", "play_type", "epa", "success", "wp", "sack",
                             "qb_dropback", "qb_epa", "passer_player_id", "passer_player_name",
-                            "cpoe", "down", "yards_gained"]).to_pandas())
+                            "cpoe", "down", "yards_gained", "receiver_player_id", "rusher_player_id"]).to_pandas())
     return _PBP
 
 # ================================================================== stage 1: games + team-games
@@ -757,6 +758,101 @@ def run_backtest():
 
 if BACKTEST and len(r):
     run_backtest()
+
+# ---- player quality (test): Skill unit built from individual receivers and backs, not from team results.
+def build_skill_quality(use_avail):
+    """Expected EPA per game above average from a team's skill players, using only information known before kickoff:
+    each player's shrunk career EPA per opportunity (target or carry) x his expected opportunities (average of the team's
+    last 3 games), with players on the injury report scaled down by the chance they miss."""
+    K = 100.0                                                          # opportunities of average play assumed before a player's own record counts
+    pbp = get_pbp()
+    p = pbp[pbp["play_type"].isin(["pass", "run"]) & pbp["epa"].notna() & pbp["posteam"].notna()].copy()
+    p["sack"] = p["sack"].fillna(0.0)
+    qbs = pd.MultiIndex.from_frame(p.loc[p["passer_player_id"].notna(), ["game_id", "passer_player_id"]].drop_duplicates())
+    a = p[(p["play_type"] == "pass") & (p["sack"] == 0) & p["receiver_player_id"].notna()].rename(columns={"receiver_player_id": "pid"})
+    b = p[(p["play_type"] == "run") & p["rusher_player_id"].notna()].rename(columns={"rusher_player_id": "pid"})
+    x = pd.concat([a[["game_id", "posteam", "pid", "epa"]], b[["game_id", "posteam", "pid", "epa"]]])
+    x = x[~pd.MultiIndex.from_arrays([x["game_id"], x["pid"]]).isin(qbs)]       # quarterback scrambles are the QB's, not a skill player's
+    pg = (x.groupby(["game_id", "posteam", "pid"]).agg(n=("epa", "size"), e=("epa", "sum")).reset_index()
+            .rename(columns={"posteam": "team"}))
+    pg = pg.merge(tg[["game_id", "team", "season", "week"]], on=["game_id", "team"])        # regular season only
+    pg["order"] = pg["season"] * 100 + pg["week"]
+    mu = pg["e"].sum() / pg["n"].sum()
+    pp = pg.sort_values(["pid", "order"]).copy()
+    pp["cn"], pp["ce"] = pp.groupby("pid")["n"].cumsum(), pp.groupby("pid")["e"].cumsum()
+    pp["rating"] = (pp["ce"] + K * mu) / (pp["cn"] + K) - mu                                  # EPA per opportunity vs average, AFTER this game
+    rt = pp[["pid", "order", "rating"]].sort_values("order")
+    tgi = tg[["game_id", "team", "season", "week"]].sort_values(["team", "season", "week"]).copy()
+    tgi["idx"] = tgi.groupby("team").cumcount()                                               # team's game number, running across seasons
+    pg = pg.merge(tgi[["game_id", "team", "idx"]], on=["game_id", "team"])
+    ex = pd.concat([pg[["team", "pid", "idx", "n"]].assign(idx=lambda d, k=k: d["idx"] + k) for k in (1, 2, 3)])
+    ex = ex.groupby(["team", "pid", "idx"], as_index=False)["n"].sum()
+    ex["exp"] = ex["n"] / 3.0                                                                  # expected opportunities: last 3 team games
+    ex = ex.merge(tgi, on=["team", "idx"])
+    ex["order"] = ex["season"] * 100 + ex["week"]
+    ex = pd.merge_asof(ex.sort_values("order"), rt, on="order", by="pid", allow_exact_matches=False, direction="backward")
+    ex["rating"] = ex["rating"].fillna(0.0)                                                    # no record yet = average
+    if use_avail:
+        inj = load_years(nfl.load_injuries, range(PBP_FROM, LAST_SEASON + 1), "injuries")
+        if "gsis_id" not in inj:
+            raise RuntimeError("injury table has no gsis_id")
+        if "game_type" in inj:
+            inj = inj[inj["game_type"] == "REG"]
+        inj = inj.dropna(subset=["season", "week", "gsis_id"]).copy()
+        inj["season"], inj["week"] = inj["season"].astype(int), inj["week"].astype(int)
+        inj["w"] = inj["report_status"].map({"Out": 1.0, "Doubtful": 0.85, "Questionable": 0.25}).fillna(0.0)
+        iw = inj.groupby(["season", "week", "gsis_id"], as_index=False)["w"].max().rename(columns={"gsis_id": "pid"})
+        ex = ex.merge(iw, on=["season", "week", "pid"], how="left")
+        ex["exp"] = ex["exp"] * (1.0 - ex["w"].fillna(0.0))
+    ex["val"] = ex["exp"] * ex["rating"]
+    return ex.groupby(["game_id", "team"])["val"].sum()
+
+def run_skillq():
+    base_spec = [x for x in SPEC if x[0] not in {f[0] for g in NEW_GROUPS.values() for f in g}]
+    inj_cols = [i[0] for i in INJ] + CONT_NAMES
+    seasons = [sn for sn in range(2022, 2026) if sn in set(F["season"])]
+    def frame_base():
+        Fv = F.copy()
+        for name, unit, col, sign in base_spec:
+            if col is None or name == "qb_swap":
+                continue
+            R = rating_hist(col, unit=unit if RET_PRIOR else None)
+            Fv[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
+        return Fv
+    Fb = frame_base()
+    def run(Fv, feats):
+        parts = []
+        for sn in seasons:
+            tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
+            te = Fv[(Fv["season"] == sn) & Fv["home_margin"].notna()].copy()
+            te["err"] = np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values)
+            parts.append(te[["game_id", "season", "week", "err"]])
+        return pd.concat(parts).reset_index(drop=True), fit(Fv[Fv["home_margin"].notna()], feats)
+    base_feats = [x[0] for x in base_spec] + inj_cols + CTX
+    base, _ = run(Fb, base_feats)
+    print("\nPLAYER QUALITY TEST: Skill unit from individual receivers and backs (positive change = better)")
+    print(f"  seasons tested {seasons}; {len(base)} games; baseline miss {base['err'].mean():.3f}")
+    for label, avail in (("lineup from the last 3 games only", False), ("lineup from last 3 games, injury report applied", True)):
+        try:
+            V = build_skill_quality(avail)
+        except Exception as e:
+            print(f"  {label}: skipped ({str(e)[:100]})")
+            continue
+        Fv = Fb.copy()
+        Fv["skillq"] = np.nan_to_num(V.reindex(mi("home_team")).values - V.reindex(mi("away_team")).values)
+        cur, w = run(Fv, base_feats + ["skillq"])
+        d = base["err"].values - cur["err"].values
+        ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+        print(f"\n  {label}: overall {cur['err'].mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}   better in {100 * (d > 0).mean():.0f}% of games")
+        for sn in seasons:
+            m = (cur["season"] == sn).values
+            print(f"    {sn}: change {d[m].mean():+.3f} +/- {1.96 * d[m].std(ddof=1) / np.sqrt(m.sum()):.3f}")
+        for nm, m in (("weeks 1-6", (cur["week"] <= 6).values), ("weeks 7+", (cur["week"] > 6).values)):
+            print(f"    {nm:<10} change {d[m].mean():+.3f} +/- {1.96 * d[m].std(ddof=1) / np.sqrt(m.sum()):.3f}  ({m.sum()} games)")
+        print(f"    weight on skillq {w['skillq']:+.2f} (0 = ignored); typical spread between teams {Fv['skillq'].std():.2f} pts")
+
+if SKILLQ and len(r):
+    run_skillq()
 
 # ---- the opener: Monday-noon line from game_lines.csv (only meaningful when that file is present)
 if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
