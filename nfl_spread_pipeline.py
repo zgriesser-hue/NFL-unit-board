@@ -62,7 +62,7 @@ SIGN_CONSTRAINED = True              # True = every weight must be >= 0 (a stat 
 # ---- opt-in rating variants (defaults reproduce the current model exactly; EXPERIMENTS=1 tests them side by side)
 RATING_DECAY = float(os.environ.get("RATING_DECAY", "1.0"))   # in-season game weight: 1.0 = equal; 0.9 = each older game counts 10% less
 OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game's stat for the opponent's pregame strength
-NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl (extra team stats), or "all"
+NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl, succ (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
@@ -214,6 +214,10 @@ def build_split():
         ed.groupby(["game_id", "defteam"]).agg(def_early=("epa", "mean")).reset_index().rename(columns={"defteam": "team"}),
         p.groupby(["game_id", "posteam"]).agg(off_xpl=("xpl", "mean")).reset_index().rename(columns={"posteam": "team"}),
         p.groupby(["game_id", "defteam"]).agg(def_xpl=("xpl", "mean")).reset_index().rename(columns={"defteam": "team"}),
+        ps.groupby(["game_id", "posteam"]).agg(off_psucc=("success", "mean")).reset_index().rename(columns={"posteam": "team"}),
+        rs.groupby(["game_id", "posteam"]).agg(off_rsucc=("success", "mean")).reset_index().rename(columns={"posteam": "team"}),
+        ps.groupby(["game_id", "defteam"]).agg(def_psucc=("success", "mean")).reset_index().rename(columns={"defteam": "team"}),
+        rs.groupby(["game_id", "defteam"]).agg(def_rsucc=("success", "mean")).reset_index().rename(columns={"defteam": "team"}),
     ]
     out = parts[0]
     for part in parts[1:]:
@@ -221,7 +225,7 @@ def build_split():
     return out
 
 sp = f"{OUT}/team_games_split.csv"
-if fresh(sp) and "def_xpl" in pd.read_csv(sp, nrows=1).columns:
+if fresh(sp) and "def_rsucc" in pd.read_csv(sp, nrows=1).columns:
     log("cached: team_games_split.csv")
     split = pd.read_csv(sp)
 else:
@@ -411,7 +415,9 @@ if EXTRA_FEATS:
 # candidate team stats, grouped; each tuple is (feature, unit, team-stat column, sign)
 NEW_GROUPS = {"cpoe": [("cpoe_off", "Skill", "off_cpoe", +1)],
               "early": [("early_off", "O-line", "off_early", +1), ("early_def", "Front", "def_early", -1)],
-              "xpl": [("xpl_off", "Skill", "off_xpl", +1), ("xpl_def", "Coverage", "def_xpl", -1)]}
+              "xpl": [("xpl_off", "Skill", "off_xpl", +1), ("xpl_def", "Coverage", "def_xpl", -1)],
+              "succ": [("psucc_off", "Skill", "off_psucc", +1), ("rsucc_off", "O-line", "off_rsucc", +1),
+                       ("rsucc_def", "Front", "def_rsucc", -1), ("psucc_def", "Coverage", "def_psucc", -1)]}
 _want = list(NEW_GROUPS) if NEW_FEATS.strip().lower() == "all" else [x.strip() for x in NEW_FEATS.split(",") if x.strip()]
 for _g in _want:
     SPEC += NEW_GROUPS[_g]
@@ -469,7 +475,8 @@ key = pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])
 ADJ_PAIR = {"press_allowed": "press_gen", "press_gen": "press_allowed", "off_sack": "def_sack",
             "def_sack": "off_sack", "def_rush": "off_rush", "off_rush": "def_rush",
             "def_pass": "off_pass", "off_pass": "def_pass",
-            "off_early": "def_early", "def_early": "off_early", "off_xpl": "def_xpl", "def_xpl": "off_xpl"}
+            "off_early": "def_early", "def_early": "off_early", "off_xpl": "def_xpl", "def_xpl": "off_xpl",
+            "off_psucc": "def_psucc", "def_psucc": "off_psucc", "off_rsucc": "def_rsucc", "def_rsucc": "off_rsucc"}
 
 def _prev_sums(vals, decay):
     """Weighted sum and weight of this team's PREVIOUS games this season (current game excluded)."""
@@ -633,7 +640,9 @@ def run_experiments():
                 ("+ completion % over expected", 1.0, False, False, ["cpoe"]),
                 ("+ early-down EPA (off and def)", 1.0, False, False, ["early"]),
                 ("+ explosive-play rate (off and def)", 1.0, False, False, ["xpl"]),
-                ("+ all three new stats", 1.0, False, False, ["cpoe", "early", "xpl"])]
+                ("+ all three new stats", 1.0, False, False, ["cpoe", "early", "xpl"]),
+                ("+ success rate, pass and rush (off and def)", 1.0, False, False, ["succ"]),
+                ("+ all four new stat groups", 1.0, False, False, ["cpoe", "early", "xpl", "succ"])]
     print("\nEXPERIMENTS: rating variants, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     base = None
     for label, decay, adj, extra, groups in variants:
