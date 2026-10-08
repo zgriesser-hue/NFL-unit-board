@@ -62,6 +62,7 @@ SIGN_CONSTRAINED = True              # True = every weight must be >= 0 (a stat 
 # ---- opt-in rating variants (defaults reproduce the current model exactly; EXPERIMENTS=1 tests them side by side)
 RATING_DECAY = float(os.environ.get("RATING_DECAY", "1.0"))   # in-season game weight: 1.0 = equal; 0.9 = each older game counts 10% less
 OPP_ADJ = os.environ.get("OPP_ADJ", "") == "1"                # adjust each game's stat for the opponent's pregame strength
+NEW_FEATS = os.environ.get("NEW_FEATS", "")                    # comma list of: cpoe, early, xpl (extra team stats), or "all"
 EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive rush EPA (O-line) and offensive pass EPA (Skill)
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
@@ -93,7 +94,8 @@ def get_pbp():
         log("loading play-by-play (a minute or two) ...")
         _PBP = (nfl.load_pbp(seasons=list(range(PBP_FROM, LAST_SEASON + 1)))
                    .select(["game_id", "posteam", "defteam", "play_type", "epa", "success", "wp", "sack",
-                            "qb_dropback", "qb_epa", "passer_player_id", "passer_player_name"]).to_pandas())
+                            "qb_dropback", "qb_epa", "passer_player_id", "passer_player_name",
+                            "cpoe", "down", "yards_gained"]).to_pandas())
     return _PBP
 
 # ================================================================== stage 1: games + team-games
@@ -201,13 +203,25 @@ def build_split():
         ps.groupby(["game_id", "defteam"]).agg(def_pass=("epa", "mean"), def_sack=("sack", "mean")).reset_index().rename(columns={"defteam": "team"}),
         rs.groupby(["game_id", "defteam"]).agg(def_rush=("epa", "mean")).reset_index().rename(columns={"defteam": "team"}),
     ]
+    # extra candidates: completion % over expected, early-down EPA, explosive-play rate (pass 20+ yds, run 10+ yds)
+    yg = p["yards_gained"].fillna(0)
+    p["xpl"] = (((p["play_type"] == "pass") & (p["sack"] == 0) & (yg >= 20)) |
+                ((p["play_type"] == "run") & (yg >= 10))).astype(float)
+    ed = p[p["down"].isin([1, 2])]
+    parts += [
+        ps.groupby(["game_id", "posteam"]).agg(off_cpoe=("cpoe", "mean")).reset_index().rename(columns={"posteam": "team"}),
+        ed.groupby(["game_id", "posteam"]).agg(off_early=("epa", "mean")).reset_index().rename(columns={"posteam": "team"}),
+        ed.groupby(["game_id", "defteam"]).agg(def_early=("epa", "mean")).reset_index().rename(columns={"defteam": "team"}),
+        p.groupby(["game_id", "posteam"]).agg(off_xpl=("xpl", "mean")).reset_index().rename(columns={"posteam": "team"}),
+        p.groupby(["game_id", "defteam"]).agg(def_xpl=("xpl", "mean")).reset_index().rename(columns={"defteam": "team"}),
+    ]
     out = parts[0]
     for part in parts[1:]:
         out = out.merge(part, on=["game_id", "team"], how="outer")
     return out
 
 sp = f"{OUT}/team_games_split.csv"
-if fresh(sp):
+if fresh(sp) and "def_xpl" in pd.read_csv(sp, nrows=1).columns:
     log("cached: team_games_split.csv")
     split = pd.read_csv(sp)
 else:
@@ -394,6 +408,13 @@ SPEC = [("qb_rating", "QB", None, +1), ("qb_swap", "QB", "qb_pre", +1),
         ("pass_def", "Coverage", "def_pass", -1)]
 if EXTRA_FEATS:
     SPEC += [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
+# candidate team stats, grouped; each tuple is (feature, unit, team-stat column, sign)
+NEW_GROUPS = {"cpoe": [("cpoe_off", "Skill", "off_cpoe", +1)],
+              "early": [("early_off", "O-line", "off_early", +1), ("early_def", "Front", "def_early", -1)],
+              "xpl": [("xpl_off", "Skill", "off_xpl", +1), ("xpl_def", "Coverage", "def_xpl", -1)]}
+_want = list(NEW_GROUPS) if NEW_FEATS.strip().lower() == "all" else [x.strip() for x in NEW_FEATS.split(",") if x.strip()]
+for _g in _want:
+    SPEC += NEW_GROUPS[_g]
 INJ = [("qb_inj", "QB", ["QB"]), ("ol_inj", "O-line", ["OL"]), ("sk_inj", "Skill", ["WR", "TE", "RB"]),
        ("fr_inj", "Front", ["DL", "LB"]), ("cov_inj", "Coverage", ["DB"])]
 UNITS = ["QB", "O-line", "Skill", "Front", "Coverage"]
@@ -447,7 +468,8 @@ key = pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])
 # strong offense, a line's sacks taken higher against a strong pass rush, and so on.
 ADJ_PAIR = {"press_allowed": "press_gen", "press_gen": "press_allowed", "off_sack": "def_sack",
             "def_sack": "off_sack", "def_rush": "off_rush", "off_rush": "def_rush",
-            "def_pass": "off_pass", "off_pass": "def_pass"}
+            "def_pass": "off_pass", "off_pass": "def_pass",
+            "off_early": "def_early", "def_early": "off_early", "off_xpl": "def_xpl", "def_xpl": "off_xpl"}
 
 def _prev_sums(vals, decay):
     """Weighted sum and weight of this team's PREVIOUS games this season (current game excluded)."""
@@ -579,7 +601,8 @@ else:
 
 # ---- experiments: rating variants side by side (set EXPERIMENTS=1). Same games, same fit, paired by game.
 def run_experiments():
-    spec_base = [x for x in SPEC if x[0] not in ("run_off", "pass_off")]
+    _new_names = {f[0] for g in NEW_GROUPS.values() for f in g}
+    spec_base = [x for x in SPEC if x[0] not in ("run_off", "pass_off") and x[0] not in _new_names]
     extra_spec = [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
     inj_cols = [i[0] for i in INJ] + CONT_NAMES
 
@@ -600,17 +623,21 @@ def run_experiments():
             errs.append(np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values))
         return np.concatenate(errs)
 
-    variants = [("baseline (current model)", 1.0, False, False),
-                ("recency decay 0.95", 0.95, False, False), ("recency decay 0.90", 0.90, False, False),
-                ("recency decay 0.80", 0.80, False, False),
-                ("opponent-adjusted", 1.0, True, False),
-                ("opponent-adjusted + decay 0.90", 0.90, True, False),
-                ("+ offensive rush/pass EPA", 1.0, False, True),
-                ("opp-adjusted + offensive rush/pass EPA", 1.0, True, True)]
+    variants = [("baseline (current model)", 1.0, False, False, []),
+                ("recency decay 0.95", 0.95, False, False, []), ("recency decay 0.90", 0.90, False, False, []),
+                ("recency decay 0.80", 0.80, False, False, []),
+                ("opponent-adjusted", 1.0, True, False, []),
+                ("opponent-adjusted + decay 0.90", 0.90, True, False, []),
+                ("+ offensive rush/pass EPA", 1.0, False, True, []),
+                ("opp-adjusted + offensive rush/pass EPA", 1.0, True, True, []),
+                ("+ completion % over expected", 1.0, False, False, ["cpoe"]),
+                ("+ early-down EPA (off and def)", 1.0, False, False, ["early"]),
+                ("+ explosive-play rate (off and def)", 1.0, False, False, ["xpl"]),
+                ("+ all three new stats", 1.0, False, False, ["cpoe", "early", "xpl"])]
     print("\nEXPERIMENTS: rating variants, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     base = None
-    for label, decay, adj, extra in variants:
-        spec = spec_base + (extra_spec if extra else [])
+    for label, decay, adj, extra, groups in variants:
+        spec = spec_base + (extra_spec if extra else []) + [f for g in groups for f in NEW_GROUPS[g]]
         Fv = frame(spec, decay, adj)
         feats = [x[0] for x in spec] + inj_cols + CTX
         e = oos(Fv, feats)
@@ -622,7 +649,7 @@ def run_experiments():
         ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
         verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
         print(f"  {label:<42} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
-    print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS for the weekly run)")
+    print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS / NEW_FEATS for the weekly run)")
 
 if EXPERIMENTS and len(r):
     run_experiments()
