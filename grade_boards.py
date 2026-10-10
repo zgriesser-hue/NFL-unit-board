@@ -22,6 +22,8 @@ b["season"] = b["game_id"].str[:4].astype(int)
 b["week"] = b["game_id"].str[5:7].astype(int)
 
 sched = nfl.load_schedules(seasons=sorted(b["season"].unique().tolist())).to_pandas()
+res = sched[sched["home_score"].notna()][["game_id", "season", "week", "home_team", "away_team", "home_score", "away_score"]]
+res.to_csv(f"{ROOT}/boards/results_latest.csv", index=False)      # every finished game, for the app's bet tracker
 g = b.merge(sched[["game_id", "home_score", "away_score"]], on="game_id", how="left")
 g = g[g["home_score"].notna()].copy()
 if g.empty:

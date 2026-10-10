@@ -1277,27 +1277,45 @@ print(pd.concat([_st.head(8), _st.tail(8)])[["name", "team", "pts_vs_avg_starter
 # ---- manual QB overrides: qb_overrides.csv (columns: team, qb, optional week). Applies to this week's board only.
 QB_SRC = {t: "last starter" for t in qb_name.index}
 OVR_TEAMS = set()
+def _qid(x):
+    """Name -> 'jdaniels' (first initial + last name), so 'Jayden Daniels', 'J.Daniels' and 'Daniels' (last name only) can match."""
+    x = str(x).strip()
+    if "." in x and " " not in x:
+        a, b = x.split(".", 1)
+        parts = [a, b]
+    else:
+        parts = [p for p in re.sub(r"[^A-Za-z ]", "", x).split() if p.lower() not in ("jr", "sr", "ii", "iii", "iv")]
+    parts = [re.sub(r"[^a-z]", "", p.lower()) for p in parts if p]
+    if not parts:
+        return ""
+    return (parts[0][:1] + parts[-1]) if len(parts) > 1 else parts[0]
+
+qs = q0.sort_values("kickoff_utc").copy()
+qs["key"] = qs["name"].map(_qid)
+gq = qs.groupby("passer_player_id")
+qs["post"] = (gq["epa_sum"].cumsum() + K_QB * QB_PRIOR) / (gq["db"].cumsum() + K_QB)
+bykey = qs.groupby("key").tail(1).set_index("key")["post"]               # each name's latest rating
+repl = float(qb_post.quantile(0.10))                                      # replacement level: weak current starter
+
+def qb_lookup(name):
+    """(rating, source) for a QB name: his own record if found, else replacement level."""
+    k = _qid(name)
+    hit = bykey[bykey.index == k]
+    if hit.empty:                                                         # last name only
+        hit = bykey[bykey.index.str.endswith(k)] if k else bykey.iloc[0:0]
+    if len(hit) == 1:
+        return float(hit.iloc[0]), "rated from his games"
+    return repl, "no track record: replacement level"
+
 _ov = os.path.join(ROOT if not IN_COLAB else OUT, "qb_overrides.csv")
 if os.path.exists(_ov):
     ov = pd.read_csv(_ov)
     if "week" in ov:
         ov = ov[ov["week"].isna() | (ov["week"] == wk)]
-    nm = lambda x: re.sub(r"[^a-z ]", "", str(x).lower()).strip()
-    qs = q0.sort_values("kickoff_utc").copy()
-    qs["key"] = qs["name"].map(nm)
-    gq = qs.groupby("passer_player_id")
-    qs["post"] = (gq["epa_sum"].cumsum() + K_QB * QB_PRIOR) / (gq["db"].cumsum() + K_QB)
-    bykey = qs.groupby("key").tail(1).set_index("key")["post"]           # each name's latest rating
-    repl = float(qb_post.quantile(0.10))                                  # replacement level: weak current starter
     for _, o in ov.iterrows():
-        t, k = str(o["team"]).strip().upper(), nm(o["qb"])
-        hit = bykey[bykey.index == k]
-        if hit.empty:                                                     # allow just a last name
-            hit = bykey[bykey.index.str.endswith(" " + k)]
-        if len(hit) == 1:
-            qb_post[t], src = float(hit.iloc[0]), "override (rated from his games)"
-        else:
-            qb_post[t], src = repl, "override (no track record: replacement level)"
+        t = str(o["team"]).strip().upper()
+        r_, how = qb_lookup(o["qb"])
+        qb_post[t], src = r_, f"override ({how})"
         qb_name[t], QB_SRC[t] = str(o["qb"]).strip(), src
         OVR_TEAMS.add(t)
         print(f"  QB override: {t} -> {o['qb']} ({src}), rating {qb_post[t]:+.3f}")
@@ -1321,10 +1339,17 @@ try:
     _s["share"] = _s[["offense_pct", "defense_pct"]].max(axis=1).fillna(0.0)
     _s["key"] = _s["player"].map(_norm)
     _s["roll3"] = _s.groupby(["key", "team"])["share"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-    _last = _s.groupby(["key", "team"]).tail(1).copy()
-    _last = _last[(_last["order"] >= _last["team"].map(_s.groupby("team")["order"].max()) - 3) & (_last["roll3"] >= 0.2)]
+    _role = _s.groupby(["key", "team"])["share"].apply(lambda x: float(np.percentile(x.tail(6), 75))).rename("role_share")
+    _tord = {t: np.array(sorted(set(g["order"]))) for t, g in _s.groupby("team")}
+    _last = _s.groupby(["key", "team"]).tail(1).copy().merge(_role.reset_index(), on=["key", "team"], how="left")
+    # display-only context (the line math still uses roll3): typical role, last game played, team games missed since
+    _last["last_wk"] = _last["order"] % 100
+    _last["games_missed"] = [int((_tord[t] > o).sum()) for t, o in zip(_last["team"], _last["order"])]
+    _last = _last[(_last["order"] >= _last["team"].map(_s.groupby("team")["order"].max()) - 3)
+                  & ((_last["roll3"] >= 0.2) | (_last["role_share"] >= 0.3))]
     _last["grp"] = _last["position"].map(_GRP)
-    POOL = (_last.dropna(subset=["grp"])[["team", "player", "key", "position", "grp", "roll3"]]
+    POOL = (_last.dropna(subset=["grp"])[["team", "player", "key", "position", "grp", "roll3", "role_share", "last_wk",
+                                          "games_missed"]]
             .rename(columns={"roll3": "snap_share", "player": "name"}).reset_index(drop=True))
     _ij = load_years(nfl.load_injuries, [season_now], "injuries")
     _ij = _ij[_ij["week"].astype(int) == wk].copy()
@@ -1377,6 +1402,31 @@ if os.path.exists(_io) and len(POOL):
         POOL.loc[i, ["w_now", "override"]] = [wn, str(o["status"])]
         print(f"  injury override: {t} {POOL.loc[i, 'name']} -> {o['status']} (weight {wn:.2f}, snap share {POOL.loc[i, 'snap_share']:.2f})"
               + ("  [QB: if he is out, also set the replacement in qb_overrides.csv]" if g == "QB" and wn >= 0.85 else ""))
+
+# ---- automatic starter check: if a team's last starter is Out/Doubtful on this week's report and another QB on the team
+# is not, the board uses that QB (the "last starter" rule is wrong whenever the regular QB returns from injury).
+if len(POOL):
+    for _t in sorted(qb_name.index):
+        if _t in OVR_TEAMS:
+            continue
+        _pq = POOL[(POOL["team"] == _t) & (POOL["grp"] == "QB")].copy()
+        if _pq.empty:
+            continue
+        _pq["qid"] = _pq["name"].map(_qid)
+        _cur = _pq[_pq["qid"] == _qid(qb_name[_t])]
+        if _cur.empty or float(_cur["w_now"].iloc[0]) < 0.85:
+            continue
+        _cand = _pq[(_pq["w_now"] < 0.5) & (_pq["qid"] != _qid(qb_name[_t]))]
+        if _cand.empty:
+            print(f"  QB check: {_t} starter {qb_name[_t]} is {_cur['report_status'].iloc[0] or 'out'} and no healthy QB found; "
+                  "set the starter in qb_overrides.csv")
+            continue
+        _c = _cand.sort_values(["snap_share", "role_share"], ascending=False).iloc[0]
+        _old = qb_name[_t]
+        _r, _how = qb_lookup(_c["name"])
+        qb_post[_t], qb_name[_t], QB_SRC[_t] = _r, _c["name"], f"auto: {_old} is out on the report ({_how})"
+        OVR_TEAMS.add(_t)
+        print(f"  QB auto-switch: {_t} {_old} ({_cur['report_status'].iloc[0]}) -> {_c['name']} ({_how}), rating {_r:+.3f}")
 
 teams = sorted(set(tg["team"]))
 ADV = {}                                                     # each team's advantage per feature
