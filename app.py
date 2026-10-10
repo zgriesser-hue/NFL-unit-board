@@ -24,6 +24,19 @@ def fmt_line(x):
     return "PK" if abs(x) < 0.05 else f"{-x:+.1f}"
 
 
+def tl(home, away, hs):
+    """Spread with the team named: the favorite and its points, e.g. 'WAS -4.5'. Positive hs = home favored."""
+    if pd.isna(hs):
+        return "-"
+    if abs(hs) < 0.05:
+        return "PK"
+    return f"{home} -{hs:.1f}" if hs > 0 else f"{away} -{-hs:.1f}"
+
+
+def row_tl(df, col):
+    return df.apply(lambda r: tl(r["home_team"], r["away_team"], r[col]), axis=1)
+
+
 def pick_text(row):
     """Which side the model prefers vs the market, in words."""
     e = row.get("edge_vs_market")
@@ -77,20 +90,21 @@ with tab_week:
     view = pd.DataFrame({
         "Game": b["away_team"] + " @ " + b["home_team"],
         "Kick": b["kickoff"].dt.strftime("%a %-I:%M"),
-        "Model": b["fair_home_spread"].map(fmt_line),
+        "Model": row_tl(b, "fair_home_spread"),
     })
     if has_mkt:
-        view["Market"] = b["market_home_spread"].map(fmt_line)
+        view["Market"] = row_tl(b, "market_home_spread")
         view["Edge"] = b["edge_vs_market"].round(1)
         view["Model side"] = b.apply(pick_text, axis=1)
         if "fair_at_market_weights" in b:
-            view["At mkt wts"] = b["fair_at_market_weights"].map(fmt_line)
+            view["At mkt wts"] = row_tl(b, "fair_at_market_weights")
             view["Not in data"] = b["market_minus_mkt_weighted"].round(1)
     st.caption("'At mkt wts' is our same data weighted the way the market weights it. 'Not in data' is "
                "market minus that, in points toward the home team: what our data can't explain "
                "(injury news, roster moves, anything not in the stats).")
-    st.caption("Lines are the home team's spread (negative = home favored). "
-               "Edge = model minus market in points; positive means the model likes the home team more.")
+    st.caption("Each line names the favorite and how many points it is favored by (WAS -4.5 = Washington favored by 4.5). "
+               "Edge = model minus market in points toward the home team; 'Model side' says which team the model likes "
+               "more than the market does.")
     if has_mkt:
         view = view.reindex(view["Edge"].abs().sort_values(ascending=False, na_position="last").index)
     st.dataframe(view, hide_index=True, use_container_width=True)
@@ -106,13 +120,13 @@ with tab_game:
     sel = st.selectbox("Game", labels)
     r = b.iloc[labels.index(sel)]
     c1, c2, c3 = st.columns(3)
-    c1.metric("Model", fmt_line(r["fair_home_spread"]))
+    c1.metric("Model", tl(r["home_team"], r["away_team"], r["fair_home_spread"]))
     if "market_home_spread" in r and pd.notna(r["market_home_spread"]):
-        c2.metric("Market", fmt_line(r["market_home_spread"]))
+        c2.metric("Market", tl(r["home_team"], r["away_team"], r["market_home_spread"]))
         c3.metric("Edge", f"{r['edge_vs_market']:+.1f}")
         if "fair_at_market_weights" in r and pd.notna(r["fair_at_market_weights"]):
             d1, d2 = st.columns(2)
-            d1.metric("Our data, market weights", fmt_line(r["fair_at_market_weights"]))
+            d1.metric("Our data, market weights", tl(r["home_team"], r["away_team"], r["fair_at_market_weights"]))
             d2.metric("Market beyond our data", f"{r['market_minus_mkt_weighted']:+.1f}")
     st.caption(f"QBs: {r['away_QB']} (away) vs {r['home_QB']} (home)")
 
@@ -340,8 +354,8 @@ with tab_wi:
             rows.append({"Where": "Starting QB change", "Points toward home": round(qv, 2)})
         base = float(r["fair_home_spread"])
         c1, c2, c3 = st.columns(3)
-        c1.metric("Board line", fmt_line(base))
-        c2.metric("What-if line", fmt_line(base + change), delta=f"{change:+.1f} pts toward home", delta_color="off")
+        c1.metric("Board line", tl(r["home_team"], r["away_team"], base))
+        c2.metric("What-if line", tl(r["home_team"], r["away_team"], base + change), delta=f"{change:+.1f} pts toward home", delta_color="off")
         if "market_home_spread" in r and pd.notna(r["market_home_spread"]):
             c3.metric("Edge vs market", f"{base + change - r['market_home_spread']:+.1f}",
                       delta=f"was {base - r['market_home_spread']:+.1f}", delta_color="off")
