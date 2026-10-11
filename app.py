@@ -406,7 +406,7 @@ def bet_profit(stake, odds, outcome):
 
 with tab_bets:
     BET_COLS = ["placed", "game_id", "season", "week", "away_team", "home_team", "pick", "line", "odds", "stake",
-                "book", "note", "model_home", "market_home"]
+                "book", "note", "model_home", "market_home", "type", "desc", "manual_result"]
     if "bets" not in st.session_state:
         st.session_state["bets"] = pd.DataFrame(columns=BET_COLS)
     st.caption("Your bets live in this browser session only (nothing is saved to the repo or the server). "
@@ -422,32 +422,57 @@ with tab_bets:
 
     latest = boards[list(boards)[-1]].copy()
     labels = (latest["away_team"] + " @ " + latest["home_team"]).tolist()
-    with st.form("bet_form", clear_on_submit=False):
-        st.subheader("Add a bet")
-        f1, f2 = st.columns(2)
-        game = f1.selectbox("Game", labels)
-        gi = labels.index(game)
-        away, home = latest.iloc[gi]["away_team"], latest.iloc[gi]["home_team"]
-        pick = f2.selectbox("Team you bet", [away, home])
-        f3, f4, f5 = st.columns(3)
-        line = f3.number_input("Line you got (for your team; -3.5 = laying 3.5, +3.5 = getting 3.5)",
-                               value=0.0, step=0.5, format="%.1f")
-        odds = f4.number_input("Odds (American)", value=-110, step=5)
-        stake = f5.number_input("Stake (units or $)", value=1.0, min_value=0.0, step=0.5)
-        f6, f7 = st.columns(2)
-        book = f6.text_input("Book (optional)")
-        note = f7.text_input("Note (optional)")
-        go = st.form_submit_button("Add bet")
-    if go:
-        row = latest.iloc[gi]
-        new = pd.DataFrame([{
-            "placed": pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d %H:%M"),
-            "game_id": row["game_id"], "season": int(str(row["game_id"])[:4]), "week": int(str(row["game_id"])[5:7]),
-            "away_team": away, "home_team": home, "pick": pick, "line": line, "odds": int(odds), "stake": stake,
-            "book": book, "note": note, "model_home": row.get("fair_home_spread"),
-            "market_home": row.get("market_home_spread")}])
-        st.session_state["bets"] = pd.concat([st.session_state["bets"], new], ignore_index=True)
-        st.success(f"Added {pick} {line:+.1f} ({int(odds):+d}), stake {stake:g}")
+    btype = st.radio("Bet type", ["Spread", "Prop / other"], horizontal=True, key="bet_type")
+    now_et = lambda: pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d %H:%M")
+    if btype == "Spread":
+        with st.form("bet_form", clear_on_submit=False):
+            st.subheader("Add a spread bet")
+            f1, f2 = st.columns(2)
+            game = f1.selectbox("Game", labels)
+            gi = labels.index(game)
+            away, home = latest.iloc[gi]["away_team"], latest.iloc[gi]["home_team"]
+            pick = f2.selectbox("Team you bet", [away, home])
+            f3, f4, f5 = st.columns(3)
+            line = f3.number_input("Line you got (for your team; -3.5 = laying 3.5, +3.5 = getting 3.5)",
+                                   value=0.0, step=0.5, format="%.1f")
+            odds = f4.number_input("Odds (American)", value=-110, step=5)
+            stake = f5.number_input("Stake (units or $)", value=1.0, min_value=0.0, step=0.5)
+            f6, f7 = st.columns(2)
+            book = f6.text_input("Book (optional)")
+            note = f7.text_input("Note (optional)")
+            go = st.form_submit_button("Add bet")
+        if go:
+            row = latest.iloc[gi]
+            new = pd.DataFrame([{
+                "placed": now_et(), "game_id": row["game_id"], "season": int(str(row["game_id"])[:4]),
+                "week": int(str(row["game_id"])[5:7]), "away_team": away, "home_team": home, "pick": pick, "line": line,
+                "odds": int(odds), "stake": stake, "book": book, "note": note, "model_home": row.get("fair_home_spread"),
+                "market_home": row.get("market_home_spread"), "type": "Spread"}])
+            st.session_state["bets"] = pd.concat([st.session_state["bets"], new], ignore_index=True)
+            st.success(f"Added {pick} {line:+.1f} ({int(odds):+d}), stake {stake:g}")
+    else:
+        with st.form("prop_form", clear_on_submit=False):
+            st.subheader("Add a prop or other bet")
+            game = st.selectbox("Game", labels)
+            gi = labels.index(game)
+            desc = st.text_input("What you bet (e.g. Parker Washington receiving yards, Under 63.5)")
+            p3, p4 = st.columns(2)
+            odds = p3.number_input("Odds (American)", value=-110, step=5)
+            stake = p4.number_input("Stake (units or $)", value=1.0, min_value=0.0, step=0.5)
+            p6, p7 = st.columns(2)
+            book = p6.text_input("Book (optional)")
+            note = p7.text_input("Note (optional)")
+            go = st.form_submit_button("Add bet")
+        if go and desc.strip():
+            row = latest.iloc[gi]
+            new = pd.DataFrame([{
+                "placed": now_et(), "game_id": row["game_id"], "season": int(str(row["game_id"])[:4]),
+                "week": int(str(row["game_id"])[5:7]), "away_team": row["away_team"], "home_team": row["home_team"],
+                "odds": int(odds), "stake": stake, "book": book, "note": note, "type": "Prop", "desc": desc.strip(),
+                "manual_result": ""}])
+            st.session_state["bets"] = pd.concat([st.session_state["bets"], new], ignore_index=True)
+            st.success(f"Added: {desc.strip()} ({int(odds):+d}), stake {stake:g}. Props are not graded automatically; "
+                       "set the result under 'Fix or delete a bet' after the game.")
 
     bets = st.session_state["bets"].copy()
     if bets.empty:
@@ -460,15 +485,21 @@ with tab_bets:
             bets["home_score"], bets["away_score"] = np.nan, np.nan
         for c in ("line", "odds", "stake", "model_home", "market_home"):
             bets[c] = pd.to_numeric(bets[c], errors="coerce")
+        is_prop = bets["type"].fillna("Spread").eq("Prop")
         is_home = bets["pick"] == bets["home_team"]
         pm = np.where(is_home, bets["home_score"] - bets["away_score"], bets["away_score"] - bets["home_score"])
         cover = pm + bets["line"]                                 # > 0 means the bet covered
         bets["result"] = np.where(bets["home_score"].isna(), "Pending",
                                   np.where(cover > 0, "Win", np.where(cover < 0, "Loss", "Push")))
+        man = bets["manual_result"].fillna("").astype(str).str.strip().str.title()
+        bets["result"] = np.where(is_prop, np.where(man.isin(["Win", "Loss", "Push"]), man, "Pending"), bets["result"])
         bets["profit"] = [bet_profit(s, o, r) if r != "Pending" else np.nan
                           for s, o, r in zip(bets["stake"], bets["odds"], bets["result"])]
         pick_fair = np.where(is_home, bets["model_home"], -bets["model_home"])
-        bets["model_view"] = np.where(pd.isna(pick_fair), "", np.where(pick_fair + bets["line"] > 0, "With model", "Against model"))
+        bets["model_view"] = np.where(pd.isna(pick_fair) | is_prop, "",
+                                      np.where(pick_fair + bets["line"] > 0, "With model", "Against model"))
+        bets["bet"] = np.where(is_prop, bets["desc"].fillna(""),
+                               bets["pick"].fillna("") + " " + bets["line"].map(lambda x: "" if pd.isna(x) else f"{x:+.1f}"))
         done = bets[bets["result"] != "Pending"]
         decided = done[done["result"] != "Push"]
         m1, m2, m3, m4 = st.columns(4)
@@ -494,13 +525,16 @@ with tab_bets:
             st.subheader("Profit over time")
             st.line_chart(cum, height=200)
         st.subheader("All bets")
-        show = bets[["placed", "week", "away_team", "home_team", "pick", "line", "odds", "stake", "result", "profit",
+        show = bets[["placed", "week", "away_team", "home_team", "bet", "odds", "stake", "result", "profit",
                      "model_view", "book", "note"]].iloc[::-1]
         st.dataframe(show.round(2), hide_index=True, use_container_width=True)
         with st.expander("Fix or delete a bet"):
             raw = st.session_state["bets"].reset_index(drop=True)
+            st.caption("Props are not graded automatically: set 'manual_result' to Win, Loss or Push once the bet settles.")
             ed = st.data_editor(raw, num_rows="dynamic", hide_index=True, use_container_width=True, key="bets_edit",
-                                disabled=["game_id", "season", "week", "away_team", "home_team", "model_home", "market_home"])
+                                disabled=["game_id", "season", "week", "away_team", "home_team", "model_home", "market_home"],
+                                column_config={"manual_result": st.column_config.SelectboxColumn(
+                                    "manual_result", options=["", "Win", "Loss", "Push"])})
             if st.button("Save changes"):
                 st.session_state["bets"] = ed
                 st.rerun()
