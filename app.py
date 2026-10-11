@@ -422,7 +422,7 @@ with tab_bets:
 
     latest = boards[list(boards)[-1]].copy()
     labels = (latest["away_team"] + " @ " + latest["home_team"]).tolist()
-    btype = st.radio("Bet type", ["Spread", "Prop / other"], horizontal=True, key="bet_type")
+    btype = st.radio("Bet type", ["Spread", "Total", "Prop / other"], horizontal=True, key="bet_type")
     now_et = lambda: pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d %H:%M")
     if btype == "Spread":
         with st.form("bet_form", clear_on_submit=False):
@@ -450,6 +450,29 @@ with tab_bets:
                 "market_home": row.get("market_home_spread"), "type": "Spread"}])
             st.session_state["bets"] = pd.concat([st.session_state["bets"], new], ignore_index=True)
             st.success(f"Added {pick} {line:+.1f} ({int(odds):+d}), stake {stake:g}")
+    elif btype == "Total":
+        with st.form("total_form", clear_on_submit=False):
+            st.subheader("Add a game total bet")
+            game = st.selectbox("Game", labels)
+            gi = labels.index(game)
+            t1, t2, t3, t4 = st.columns(4)
+            side = t1.selectbox("Side", ["Over", "Under"])
+            tline = t2.number_input("Total you got", value=45.5, step=0.5, format="%.1f")
+            odds = t3.number_input("Odds (American)", value=-110, step=5)
+            stake = t4.number_input("Stake (units or $)", value=1.0, min_value=0.0, step=0.5)
+            t6, t7 = st.columns(2)
+            book = t6.text_input("Book (optional)")
+            note = t7.text_input("Note (optional)")
+            go = st.form_submit_button("Add bet")
+        if go:
+            row = latest.iloc[gi]
+            new = pd.DataFrame([{
+                "placed": now_et(), "game_id": row["game_id"], "season": int(str(row["game_id"])[:4]),
+                "week": int(str(row["game_id"])[5:7]), "away_team": row["away_team"], "home_team": row["home_team"],
+                "pick": side, "line": tline, "odds": int(odds), "stake": stake, "book": book, "note": note,
+                "type": "Total"}])
+            st.session_state["bets"] = pd.concat([st.session_state["bets"], new], ignore_index=True)
+            st.success(f"Added {side} {tline:g} ({int(odds):+d}), stake {stake:g}. Totals grade automatically once the game is final.")
     else:
         with st.form("prop_form", clear_on_submit=False):
             st.subheader("Add a prop or other bet")
@@ -486,20 +509,26 @@ with tab_bets:
         for c in ("line", "odds", "stake", "model_home", "market_home"):
             bets[c] = pd.to_numeric(bets[c], errors="coerce")
         is_prop = bets["type"].fillna("Spread").eq("Prop")
+        is_tot = bets["type"].fillna("Spread").eq("Total")
         is_home = bets["pick"] == bets["home_team"]
         pm = np.where(is_home, bets["home_score"] - bets["away_score"], bets["away_score"] - bets["home_score"])
         cover = pm + bets["line"]                                 # > 0 means the bet covered
         bets["result"] = np.where(bets["home_score"].isna(), "Pending",
                                   np.where(cover > 0, "Win", np.where(cover < 0, "Loss", "Push")))
+        tot = bets["home_score"] + bets["away_score"]
+        ou = np.where(bets["pick"].eq("Over"), tot - bets["line"], bets["line"] - tot)      # > 0 means the total bet won
+        bets["result"] = np.where(is_tot, np.where(bets["home_score"].isna(), "Pending",
+                                                   np.where(ou > 0, "Win", np.where(ou < 0, "Loss", "Push"))), bets["result"])
         man = bets["manual_result"].fillna("").astype(str).str.strip().str.title()
         bets["result"] = np.where(is_prop, np.where(man.isin(["Win", "Loss", "Push"]), man, "Pending"), bets["result"])
         bets["profit"] = [bet_profit(s, o, r) if r != "Pending" else np.nan
                           for s, o, r in zip(bets["stake"], bets["odds"], bets["result"])]
         pick_fair = np.where(is_home, bets["model_home"], -bets["model_home"])
-        bets["model_view"] = np.where(pd.isna(pick_fair) | is_prop, "",
+        bets["model_view"] = np.where(pd.isna(pick_fair) | is_prop | is_tot, "",
                                       np.where(pick_fair + bets["line"] > 0, "With model", "Against model"))
-        bets["bet"] = np.where(is_prop, bets["desc"].fillna(""),
-                               bets["pick"].fillna("") + " " + bets["line"].map(lambda x: "" if pd.isna(x) else f"{x:+.1f}"))
+        spread_txt = bets["pick"].fillna("") + " " + bets["line"].map(lambda x: "" if pd.isna(x) else f"{x:+.1f}")
+        total_txt = bets["pick"].fillna("") + " " + bets["line"].map(lambda x: "" if pd.isna(x) else f"{x:g}") + " (total)"
+        bets["bet"] = np.where(is_prop, bets["desc"].fillna(""), np.where(is_tot, total_txt, spread_txt))
         done = bets[bets["result"] != "Pending"]
         decided = done[done["result"] != "Push"]
         m1, m2, m3, m4 = st.columns(4)
