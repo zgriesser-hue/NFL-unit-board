@@ -7,10 +7,14 @@
 # Model: ridge regression of final combined score on pregame team ratings (EPA/play by pass and rush, offense and
 # defense), pace, weather and context. Ratings blend last season with this season's games so far (same idea as the
 # spread model). The board splits the fair total into units, like the unit board:
-#   league average + Offense + Defense + Pace + Weather + Context = fair total.
+#   league average + QB + Offense + Defense + Pace + Weather + Context = fair total.
+# QB: each team's starter is rated by his shrunk EPA per dropback. "qb_swap" is the starter versus the QBs the team's
+# stats were built with. For the upcoming slate the starter is last game's QB; if he left that game early the model blends
+# him with his replacement (TOT_QB_P_OUT, default 50/50); qb_overrides.csv (same file as the spread model) wins.
 # The honest question is whether it beats the CLOSING total, so the run prints a walk-forward check against it.
 
 import os
+import re
 import sys
 import time
 import subprocess
@@ -34,8 +38,10 @@ WEEK_MODE = os.environ.get("TOT_WEEK_MODE", "")              # "next" = Monday-m
 USE_FORECAST = os.environ.get("TOT_FORECAST", "1") != "0"      # fill missing game weather from a free forecast (Open-Meteo); set TOT_FORECAST=0 to turn off
 BET_EDGES = [1.0, 2.0, 3.0]                                  # |model - closing total| thresholds for the over/under record
 
-RATE_COLS = ["off_pass_epa", "off_rush_epa", "def_pass_epa", "def_rush_epa", "plays", "pass_rate"]
-GROUPS = {"Offense": ["off_pass", "off_rush"], "Defense": ["def_pass", "def_rush"],
+K_QB = 150.0                                                 # a QB's rating starts as this many dropbacks of a first-year QB
+QB_P_OUT = float(os.environ.get("TOT_QB_P_OUT", "0.5"))      # chance a QB who left last week's game early is out this week
+RATE_COLS = ["off_pass_epa", "off_rush_epa", "def_pass_epa", "def_rush_epa", "plays", "pass_rate", "qb"]
+GROUPS = {"QB": ["qb_level", "qb_swap"], "Offense": ["off_pass", "off_rush"], "Defense": ["def_pass", "def_rush"],
           "Pace": ["pace", "pass_rate"], "Weather": ["dome", "cold", "windy"], "Context": ["neutral", "div"]}
 FEATS = [f for fs in GROUPS.values() for f in fs]
 
@@ -103,6 +109,84 @@ def build_team_games(pbp, games):
     return tg
 
 
+# ================================================================== stage 2b: quarterbacks
+def _qid(x):
+    """Name -> 'jdaniels' (first initial + last name) so 'Jayden Daniels', 'J.Daniels' and 'Daniels' can match."""
+    x = str(x).strip()
+    if "." in x and " " not in x:
+        parts = x.split(".", 1)
+    else:
+        parts = [p for p in re.sub(r"[^A-Za-z ]", "", x).split() if p.lower() not in ("jr", "sr", "ii", "iii", "iv")]
+    parts = [re.sub(r"[^a-z]", "", p.lower()) for p in parts if p]
+    if not parts:
+        return ""
+    return (parts[0][:1] + parts[-1]) if len(parts) > 1 else parts[0]
+
+
+def build_qb_tables(pbp, games):
+    """qg: one row per QB per team-game (dropbacks, EPA, his rating going INTO the game). qcur: each QB's rating now.
+    starters: the QB with the most dropbacks in each team-game, with his pregame rating (column qb)."""
+    q = pbp[(pbp["qb_dropback"] == 1) & pbp["passer_player_id"].notna() & pbp["qb_epa"].notna() & pbp["posteam"].notna()]
+    qg = (q.groupby(["game_id", "posteam", "passer_player_id"])
+            .agg(name=("passer_player_name", "first"), db=("qb_epa", "size"), epa_sum=("qb_epa", "sum"),
+                 first_play=("play_id", "min"), last_play=("play_id", "max"))
+            .reset_index().rename(columns={"posteam": "team"}))
+    qg = qg.merge(games[["game_id", "kickoff_utc"]], on="game_id", how="inner").sort_values(["kickoff_utc", "game_id"]).reset_index(drop=True)
+    first = qg.groupby("passer_player_id").head(1)
+    prior = float(first["epa_sum"].sum() / first["db"].sum())            # what a QB with no record usually produces
+    g = qg.groupby("passer_player_id")
+    qg["pre"] = ((g["epa_sum"].cumsum() - qg["epa_sum"]) + K_QB * prior) / ((g["db"].cumsum() - qg["db"]) + K_QB)
+    tot = qg.groupby("passer_player_id").agg(name=("name", "last"), team=("team", "last"), db=("db", "sum"), epa=("epa_sum", "sum"))
+    tot["rating"] = (tot["epa"] + K_QB * prior) / (tot["db"] + K_QB)
+    tot["key"] = tot["name"].map(_qid)
+    qcur = tot.reset_index()
+    starters = (qg.sort_values("db", ascending=False).drop_duplicates(["game_id", "team"])
+                  [["game_id", "team", "pre", "name"]].rename(columns={"pre": "qb", "name": "qb_name"}))
+    return qg, qcur, starters
+
+
+def pick_starters(qg, qcur, up, overrides=None):
+    """Expected starting QB for each team in the upcoming slate -> {team: (rating, name, note)}."""
+    now = qcur.set_index("passer_player_id")["rating"]
+    repl = float(qcur.loc[qcur["db"] >= 300, "rating"].quantile(0.10))        # replacement level: a weak current starter
+    kick = {}
+    for _, r in up.iterrows():
+        kick[r["home_team"]], kick[r["away_team"]] = r["kickoff_utc"], r["kickoff_utc"]
+    out = {}
+    for team, ko in kick.items():
+        grp = qg[qg["team"] == team]
+        if grp.empty:
+            out[team] = (repl, "unknown", "no QB history: replacement level")
+            continue
+        lg = grp[grp["game_id"] == grp.iloc[-1]["game_id"]]                    # qg is in time order: last game's QBs
+        main = lg.sort_values("db", ascending=False).iloc[0]
+        early, late = lg.sort_values("first_play").iloc[0], lg.sort_values("last_play").iloc[-1]
+        recent = (ko - lg["kickoff_utc"].iloc[0]) <= pd.Timedelta(days=10)       # a bye week lets a knock heal
+        if recent and len(lg) > 1 and early["passer_player_id"] != late["passer_player_id"] and early["db"] / lg["db"].sum() < 0.8:
+            r_ = (1 - QB_P_OUT) * now[early["passer_player_id"]] + QB_P_OUT * now[late["passer_player_id"]]
+            out[team] = (float(r_), f"{early['name']}/{late['name']}",
+                         f"CHECK: {early['name']} left last game early ({1 - QB_P_OUT:.0%} {early['name']}, {QB_P_OUT:.0%} {late['name']})")
+        else:
+            out[team] = (float(now[main["passer_player_id"]]), main["name"], "last starter")
+    if overrides is not None and len(overrides):
+        for _, o in overrides.iterrows():
+            t = str(o["team"]).strip().upper()
+            if t not in out:
+                continue
+            k = _qid(o["qb"])
+            cand = qcur[qcur["key"] == k] if k else qcur.iloc[0:0]
+            if cand.empty and k:
+                cand = qcur[qcur["key"].str.endswith(k)]
+            if len(cand) and (cand["team"] == t).any():
+                cand = cand[cand["team"] == t]
+            if cand.empty:
+                out[t] = (repl, str(o["qb"]).strip(), "override: no track record, replacement level")
+            else:
+                best = cand.sort_values("db").iloc[-1]
+                out[t] = (float(best["rating"]), str(o["qb"]).strip(), "override")
+    return out
+
+
 # ================================================================== stage 3: pregame ratings
 def _prior(team_season_mean, league_mean, team, season, col):
     """Starting value for a team-season: part last season's team mean, part last season's league mean."""
@@ -152,6 +236,8 @@ def make_features(df):
     X["off_rush"] = df["h_off_rush_epa"] + df["a_off_rush_epa"]
     X["def_pass"] = df["h_def_pass_epa"] + df["a_def_pass_epa"]       # EPA allowed: higher = worse defense = more points
     X["def_rush"] = df["h_def_rush_epa"] + df["a_def_rush_epa"]
+    X["qb_level"] = df["h_qb_now"] + df["a_qb_now"]                     # the two starters' ratings
+    X["qb_swap"] = (df["h_qb_now"] - df["h_qb"]) + (df["a_qb_now"] - df["a_qb"])     # starter vs the QBs the team's stats were built with
     X["pace"] = df["h_plays"] + df["a_plays"]
     X["pass_rate"] = (df["h_pass_rate"] + df["a_pass_rate"]) / 2
     dome = df["roof"].isin(["dome", "closed"])
@@ -166,10 +252,10 @@ def make_features(df):
 
 
 def historical_table(games, tg):
-    h = tg[tg["is_home"] == 1][["game_id"] + [c + "_pre" for c in RATE_COLS]]
-    a = tg[tg["is_home"] == 0][["game_id"] + [c + "_pre" for c in RATE_COLS]]
-    h.columns = ["game_id"] + ["h_" + c for c in RATE_COLS]
-    a.columns = ["game_id"] + ["a_" + c for c in RATE_COLS]
+    h = tg[tg["is_home"] == 1][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb"]]
+    a = tg[tg["is_home"] == 0][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb"]]
+    h.columns = ["game_id"] + ["h_" + c for c in RATE_COLS] + ["h_qb_now"]       # h_qb = rating of the QBs so far; h_qb_now = tonight's starter
+    a.columns = ["game_id"] + ["a_" + c for c in RATE_COLS] + ["a_qb_now"]
     d = games[(games["is_playoff"] == 0) & (games["season"] >= FIRST_SEASON)].merge(h, on="game_id").merge(a, on="game_id")
     d = d[d["total_pts"].notna()].copy()
     X = make_features(d)
@@ -195,7 +281,8 @@ class TotalsModel:
         out = pd.DataFrame(index=X.index)
         out["league_avg"] = self.base
         for unit, feats in GROUPS.items():
-            out[unit] = z[feats].values @ self.coef[feats].values
+            feats = [f for f in feats if f in self.coef.index]
+            out[unit] = z[feats].values @ self.coef[feats].values if feats else 0.0
         return out
 
     def predict(self, X):
@@ -226,6 +313,8 @@ def backtest(d, X):
         Xn = X.copy()                                  # same model with the observed wind and cold removed: those are not
         Xn[["cold", "windy"]] = 0.0                    # known when the opening total is posted (roof/dome is)
         t["model_nw"] = TotalsModel().fit(Xn[tr], d.loc[tr, "total_pts"]).predict(Xn[te]).values
+        Xq = X.drop(columns=GROUPS["QB"])                # the same model with no QB information, to see what the QB features add
+        t["model_noqb"] = TotalsModel().fit(Xq[tr], d.loc[tr, "total_pts"]).predict(Xq[te]).values
         t["naive"] = float(d.loc[tr, "total_pts"].mean())
         out.append(t)
     if not out:
@@ -237,7 +326,7 @@ def backtest(d, X):
     mae = lambda c: float((r[c] - r["total_pts"]).abs().mean())
     summ = pd.DataFrame([{"seasons": str(TEST_SEASONS), "games": len(r), "mae_model": mae("model"),
                           "mae_closing_total": mae("mkt_total_close"), "mae_blend_50_50": mae("blend"),
-                          "mae_league_avg": mae("naive"),
+                          "mae_league_avg": mae("naive"), "mae_model_no_qb": mae("model_noqb"),
                           "corr_edge_vs_miss": float(np.corrcoef(r["edge"], r["total_pts"] - r["mkt_total_close"])[0, 1])}])
     return r, summ
 
@@ -343,8 +432,11 @@ def main():
 
     log("loading play-by-play (a minute or two) ...")
     pbp = (nfl.load_pbp(seasons=list(range(PBP_FROM, LAST_SEASON + 1)))
-              .select(["game_id", "posteam", "defteam", "play_type", "epa"]).to_pandas())
+              .select(["game_id", "posteam", "defteam", "play_type", "epa", "play_id", "qb_dropback", "qb_epa",
+                        "passer_player_id", "passer_player_name"]).to_pandas())
     tg = build_team_games(pbp, games)
+    qg, qcur, qstart = build_qb_tables(pbp, games)
+    tg = tg.merge(qstart[["game_id", "team", "qb"]], on=["game_id", "team"], how="left")
 
     played = games[games["total_pts"].notna() & (games["is_playoff"] == 0)]
     season_now = int(played["season"].max())
@@ -373,6 +465,7 @@ def main():
         s = summ.iloc[0]
         print(f"\nOUT-OF-SAMPLE {TEST_SEASONS}, {int(s['games'])} games, mean miss in points: model {s['mae_model']:.3f} | "
               f"closing total {s['mae_closing_total']:.3f} | 50/50 blend {s['mae_blend_50_50']:.3f} | league average {s['mae_league_avg']:.3f}")
+        print(f"  without the QB features the model misses by {s['mae_model_no_qb']:.3f} (with them {s['mae_model']:.3f}; lower is better)")
         print(f"  correlation of (model - closing total) with (actual - closing total): {s['corr_edge_vs_miss']:+.3f} "
               f"(0 = our disagreement with the market carries no information)")
         rec = over_under_record(r["edge"], r["total_pts"], r["mkt_total_close"])
@@ -409,6 +502,19 @@ def main():
     for side, col in [("h", "home_team"), ("a", "away_team")]:
         for c in RATE_COLS:
             up[f"{side}_{c}"] = up[col].map(lambda t, c=c: cur.get((t, c), np.nan))
+    qov_path = f"{ROOT}/qb_overrides.csv"                  # columns: team, qb, optional week (same file the spread model reads)
+    qov = pd.read_csv(qov_path) if os.path.exists(qov_path) else None
+    if qov is not None and "week" in qov:
+        qov = qov[qov["week"].isna() | (qov["week"] == wk)]
+    starters = pick_starters(qg, qcur, up, qov)
+    for side, col in [("h", "home_team"), ("a", "away_team")]:
+        up[f"{side}_qb_now"] = up[col].map(lambda t: starters[t][0])
+        up[f"{side}_qb_name"] = up[col].map(lambda t: starters[t][1])
+        up[f"{side}_qb_note"] = up[col].map(lambda t: starters[t][2])
+    for _, r in up.iterrows():
+        for side in ("h", "a"):
+            if r[f"{side}_qb_note"].startswith(("CHECK", "override")):
+                print(f"  QB {r['home_team'] if side == 'h' else r['away_team']}: {r[f'{side}_qb_name']} - {r[f'{side}_qb_note']}")
     up["weather_src"] = np.where(up["roof"].isin(["dome", "closed"]), "dome",
                                  np.where(up["temp_actual"].notna(), "observed", "none"))
     if USE_FORECAST:
@@ -433,6 +539,8 @@ def main():
     for c in ["league_avg"] + list(GROUPS):
         board[c] = parts[c].values
     board["fair_total"] = parts.sum(axis=1).values
+    for side, nm in [("h", "home"), ("a", "away")]:
+        board[f"{nm}_QB"], board[f"{nm}_QB_note"] = up[f"{side}_qb_name"].values, up[f"{side}_qb_note"].values
     board["weather_known"] = weather_known.values
     board["weather_src"] = up["weather_src"].values
     board["temp_f"] = np.where(up["roof"].isin(["dome", "closed"]), np.nan, up["temp_actual"]).astype(float)
