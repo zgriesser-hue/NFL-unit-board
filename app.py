@@ -391,6 +391,32 @@ with tab_fwd:
             s["roi_at_110"] = (s["roi_at_110"] * 100).round(1).astype(str) + "%"
             st.dataframe(s, hide_index=True, use_container_width=True)
             st.caption("Break-even at -110 is 52.4%. Small samples swing wildly, so wait for many weeks.")
+        if "market_home_spread" in games and games["market_home_spread"].notna().any():
+            h = games.dropna(subset=["market_home_spread"]).copy()
+            h["edge"] = h["fair_home_spread"] - h["market_home_spread"]
+            h["cover"] = h["margin"] - h["market_home_spread"]
+            h["bet"] = (h["edge"].abs() >= 0.05) & (h["cover"] != 0)               # model side vs market, pushes excluded
+            h["win"] = np.sign(h["edge"]) == np.sign(h["cover"])
+            h["pl"] = np.where(h["bet"], np.where(h["win"], 100 / 110, -1.0), 0.0)   # 1 unit at -110
+            if "kickoff_utc" in h:
+                h = h.sort_values("kickoff_utc")
+            wk = h.groupby("week").apply(lambda d: pd.Series({
+                "Games": len(d),
+                "Model miss": (d["fair_home_spread"] - d["margin"]).abs().mean(),
+                "Market miss": (d["market_home_spread"] - d["margin"]).abs().mean(),
+                "Model-side record": f"{int((d['bet'] & d['win']).sum())}-{int((d['bet'] & ~d['win']).sum())}",
+                "Units (-110)": d["pl"].sum()}), include_groups=False).reset_index()
+            st.subheader("By week")
+            st.dataframe(wk.rename(columns={"week": "Week"}).round(2), hide_index=True, use_container_width=True)
+            st.caption("Miss = average points off the final margin (lower is better). Record and units are for betting the "
+                       "model's side against the market line at -110, one unit per game.")
+            curves = pd.DataFrame({"All model-side bets": h["pl"].cumsum().values})
+            big = h["pl"].where(h["edge"].abs() >= 2, 0.0)
+            curves["Edge of 2+ points"] = big.cumsum().values
+            st.subheader("Cumulative units betting the model's side")
+            st.line_chart(curves, height=220)
+            st.caption("Games in order of kickoff. A line that drifts below zero means the model's disagreements with the "
+                       "market have lost money; expect noise until you have a few hundred games.")
         cols = [c for c in ["week", "away_team", "home_team", "fair_home_spread", "market_home_spread",
                             "margin"] if c in games]
         st.subheader("Graded games")
