@@ -687,6 +687,14 @@ with tab_tot:
             "Edge": tb["edge_vs_market"].round(1),
             "Lean": tb["lean"].fillna(""),
         })
+        if "shop_line" in tb:
+            # best number at any book for the lean side, e.g. "Over 42 (-112) BetRivers"
+            def _shop(x):
+                if pd.isna(x.get("shop_line")) or pd.isna(x.get("lean")) or not x.get("lean"):
+                    return ""
+                return f"{x['lean']} {x['shop_line']:g} ({int(x['shop_price']):+d}) {x['shop_book']}"
+            tv["Best price"] = tb.apply(_shop, axis=1)
+            tv["Shop gain"] = tb["shop_gain_pts"].round(1)
         tv = tv.reindex(tv["Edge"].abs().sort_values(ascending=False, na_position="last").index)
         if "home_QB_note" in tb:
             flags = tb[tb["home_QB_note"].fillna("").str.startswith(("CHECK", "override")) | tb["away_QB_note"].fillna("").str.startswith(("CHECK", "override"))]
