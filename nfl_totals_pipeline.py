@@ -136,6 +136,7 @@ def build_qb_tables(pbp, games):
     prior = float(first["epa_sum"].sum() / first["db"].sum())            # what a QB with no record usually produces
     g = qg.groupby("passer_player_id")
     qg["pre"] = ((g["epa_sum"].cumsum() - qg["epa_sum"]) + K_QB * prior) / ((g["db"].cumsum() - qg["db"]) + K_QB)
+    qg["post"] = (g["epa_sum"].cumsum() + K_QB * prior) / (g["db"].cumsum() + K_QB)     # his rating AFTER this game
     tot = qg.groupby("passer_player_id").agg(name=("name", "last"), team=("team", "last"), db=("db", "sum"), epa=("epa_sum", "sum"))
     tot["rating"] = (tot["epa"] + K_QB * prior) / (tot["db"] + K_QB)
     tot["key"] = tot["name"].map(_qid)
@@ -143,6 +144,32 @@ def build_qb_tables(pbp, games):
     starters = (qg.sort_values("db", ascending=False).drop_duplicates(["game_id", "team"])
                   [["game_id", "team", "pre", "name"]].rename(columns={"pre": "qb", "name": "qb_name"}))
     return qg, qcur, starters
+
+
+def _starter_from_game(lg, rating, next_kick):
+    """(rating, name, note) assumed for a team's NEXT game from the QBs of its last game. rating maps passer id -> rating."""
+    main = lg.sort_values("db", ascending=False).iloc[0]
+    early, late = lg.sort_values("first_play").iloc[0], lg.sort_values("last_play").iloc[-1]
+    recent = (next_kick - lg["kickoff_utc"].iloc[0]) <= pd.Timedelta(days=10)           # a bye week lets a knock heal
+    if recent and len(lg) > 1 and early["passer_player_id"] != late["passer_player_id"] and early["db"] / lg["db"].sum() < 0.8:
+        r_ = (1 - QB_P_OUT) * rating[early["passer_player_id"]] + QB_P_OUT * rating[late["passer_player_id"]]
+        return (float(r_), f"{early['name']}/{late['name']}",
+                f"CHECK: {early['name']} left last game early ({1 - QB_P_OUT:.0%} {early['name']}, {QB_P_OUT:.0%} {late['name']})")
+    return float(rating[main["passer_player_id"]]), main["name"], "last starter"
+
+
+def monday_starters(qg):
+    """For every historical team-game: the QB rating you would have assumed on Monday, before any starter news
+    (last game's QB, or the early-exit blend). Used to test what Monday's board could really have known."""
+    rows = []
+    for team, tgrp in qg.groupby("team"):
+        prev = None
+        for gid, lg in tgrp.groupby("game_id", sort=False):                # time order: qg is sorted by kickoff
+            if prev is not None:
+                r_, _, _ = _starter_from_game(prev, dict(zip(prev["passer_player_id"], prev["post"])), lg["kickoff_utc"].iloc[0])
+                rows.append((gid, team, r_))
+            prev = lg
+    return pd.DataFrame(rows, columns=["game_id", "team", "qb_mon"])
 
 
 def pick_starters(qg, qcur, up, overrides=None):
@@ -159,15 +186,7 @@ def pick_starters(qg, qcur, up, overrides=None):
             out[team] = (repl, "unknown", "no QB history: replacement level")
             continue
         lg = grp[grp["game_id"] == grp.iloc[-1]["game_id"]]                    # qg is in time order: last game's QBs
-        main = lg.sort_values("db", ascending=False).iloc[0]
-        early, late = lg.sort_values("first_play").iloc[0], lg.sort_values("last_play").iloc[-1]
-        recent = (ko - lg["kickoff_utc"].iloc[0]) <= pd.Timedelta(days=10)       # a bye week lets a knock heal
-        if recent and len(lg) > 1 and early["passer_player_id"] != late["passer_player_id"] and early["db"] / lg["db"].sum() < 0.8:
-            r_ = (1 - QB_P_OUT) * now[early["passer_player_id"]] + QB_P_OUT * now[late["passer_player_id"]]
-            out[team] = (float(r_), f"{early['name']}/{late['name']}",
-                         f"CHECK: {early['name']} left last game early ({1 - QB_P_OUT:.0%} {early['name']}, {QB_P_OUT:.0%} {late['name']})")
-        else:
-            out[team] = (float(now[main["passer_player_id"]]), main["name"], "last starter")
+        out[team] = _starter_from_game(lg, now, ko)
     if overrides is not None and len(overrides):
         for _, o in overrides.iterrows():
             t = str(o["team"]).strip().upper()
@@ -229,15 +248,15 @@ def add_pregame_ratings(tg, teams_now, season_now):
 
 
 # ================================================================== stage 4: game features
-def make_features(df):
+def make_features(df, qcol="qb_now"):
     """df has h_<col> and a_<col> rating columns plus roof/temp/wind/neutral/div. Returns the model features."""
     X = pd.DataFrame(index=df.index)
     X["off_pass"] = df["h_off_pass_epa"] + df["a_off_pass_epa"]
     X["off_rush"] = df["h_off_rush_epa"] + df["a_off_rush_epa"]
     X["def_pass"] = df["h_def_pass_epa"] + df["a_def_pass_epa"]       # EPA allowed: higher = worse defense = more points
     X["def_rush"] = df["h_def_rush_epa"] + df["a_def_rush_epa"]
-    X["qb_level"] = df["h_qb_now"] + df["a_qb_now"]                     # the two starters' ratings
-    X["qb_swap"] = (df["h_qb_now"] - df["h_qb"]) + (df["a_qb_now"] - df["a_qb"])     # starter vs the QBs the team's stats were built with
+    X["qb_level"] = df[f"h_{qcol}"] + df[f"a_{qcol}"]                   # the two starters' ratings
+    X["qb_swap"] = (df[f"h_{qcol}"] - df["h_qb"]) + (df[f"a_{qcol}"] - df["a_qb"])     # starter vs the QBs the team's stats were built with
     X["pace"] = df["h_plays"] + df["a_plays"]
     X["pass_rate"] = (df["h_pass_rate"] + df["a_pass_rate"]) / 2
     dome = df["roof"].isin(["dome", "closed"])
@@ -252,15 +271,16 @@ def make_features(df):
 
 
 def historical_table(games, tg):
-    h = tg[tg["is_home"] == 1][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb"]]
-    a = tg[tg["is_home"] == 0][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb"]]
-    h.columns = ["game_id"] + ["h_" + c for c in RATE_COLS] + ["h_qb_now"]       # h_qb = rating of the QBs so far; h_qb_now = tonight's starter
-    a.columns = ["game_id"] + ["a_" + c for c in RATE_COLS] + ["a_qb_now"]
+    h = tg[tg["is_home"] == 1][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb", "qb_mon"]]
+    a = tg[tg["is_home"] == 0][["game_id"] + [c + "_pre" for c in RATE_COLS] + ["qb", "qb_mon"]]
+    h.columns = ["game_id"] + ["h_" + c for c in RATE_COLS] + ["h_qb_now", "h_qb_mon"]   # h_qb = QBs so far; _now = who actually started; _mon = what Monday would assume
+    a.columns = ["game_id"] + ["a_" + c for c in RATE_COLS] + ["a_qb_now", "a_qb_mon"]
     d = games[(games["is_playoff"] == 0) & (games["season"] >= FIRST_SEASON)].merge(h, on="game_id").merge(a, on="game_id")
     d = d[d["total_pts"].notna()].copy()
     X = make_features(d)
+    Xm = make_features(d, qcol="qb_mon")                  # same features, but with the starter Monday would have assumed
     ok = X.notna().all(axis=1)
-    return d[ok].reset_index(drop=True), X[ok].reset_index(drop=True)
+    return d[ok].reset_index(drop=True), X[ok].reset_index(drop=True), Xm[ok].reset_index(drop=True)
 
 
 # ================================================================== stage 5: model
@@ -300,7 +320,7 @@ def over_under_record(edge, actual, line, thresholds=BET_EDGES):
     return pd.DataFrame(rows)
 
 
-def backtest(d, X):
+def backtest(d, X, Xmon):
     """Walk-forward: for each test season train only on earlier seasons, predict that season."""
     out = []
     for s in TEST_SEASONS:
@@ -312,7 +332,11 @@ def backtest(d, X):
         t["model"] = m.predict(X[te]).values
         Xn = X.copy()                                  # same model with the observed wind and cold removed: those are not
         Xn[["cold", "windy"]] = 0.0                    # known when the opening total is posted (roof/dome is)
-        t["model_nw"] = TotalsModel().fit(Xn[tr], d.loc[tr, "total_pts"]).predict(Xn[te]).values
+        m_nw = TotalsModel().fit(Xn[tr], d.loc[tr, "total_pts"])
+        t["model_nw"] = m_nw.predict(Xn[te]).values
+        Xmn = Xmon.copy()                              # AS OF MONDAY: the starter you would have assumed (not the one who played)
+        Xmn[["cold", "windy"]] = 0.0                   # and no observed wind/cold
+        t["model_mon"] = m_nw.predict(Xmn[te]).values
         Xq = X.drop(columns=GROUPS["QB"])                # the same model with no QB information, to see what the QB features add
         t["model_noqb"] = TotalsModel().fit(Xq[tr], d.loc[tr, "total_pts"]).predict(Xq[te]).values
         t["naive"] = float(d.loc[tr, "total_pts"].mean())
@@ -334,7 +358,7 @@ def backtest(d, X):
 def open_line_check(r, col="model", thresholds=BET_EDGES):
     """Does the model's disagreement with the OPENING total predict where the line moves by close, and would betting
     the open have won? Moving toward the model is closing-line value: the usual sign of a real edge."""
-    o = r[r["mkt_total_open"].notna()].copy()
+    o = r[r["mkt_total_open"].notna() & r[col].notna()].copy()
     if len(o) < 100:
         return None, None
     o["edge_open"] = o[col] - o["mkt_total_open"]
@@ -437,6 +461,7 @@ def main():
     tg = build_team_games(pbp, games)
     qg, qcur, qstart = build_qb_tables(pbp, games)
     tg = tg.merge(qstart[["game_id", "team", "qb"]], on=["game_id", "team"], how="left")
+    tg = tg.merge(monday_starters(qg), on=["game_id", "team"], how="left")
 
     played = games[games["total_pts"].notna() & (games["is_playoff"] == 0)]
     season_now = int(played["season"].max())
@@ -456,11 +481,11 @@ def main():
     teams_now = sorted(set(games.loc[games["season"] == season_now, "home_team"]) |
                        set(games.loc[games["season"] == season_now, "away_team"]))
     tg, cur = add_pregame_ratings(tg, teams_now, season_now)
-    d, X = historical_table(games, tg)
+    d, X, Xmon = historical_table(games, tg)
     log(f"{len(d)} completed games with full pregame ratings ({d['season'].min()}-{d['season'].max()})")
 
     # ---- honest out-of-sample check against the closing total
-    r, summ = backtest(d, X)
+    r, summ = backtest(d, X, Xmon)
     if summ is not None:
         s = summ.iloc[0]
         print(f"\nOUT-OF-SAMPLE {TEST_SEASONS}, {int(s['games'])} games, mean miss in points: model {s['mae_model']:.3f} | "
@@ -475,17 +500,20 @@ def main():
         rec.to_csv(f"{BOARD_DIR}/totals_backtest_record_latest.csv", index=False)
         oinfo, orec = open_line_check(r)
         if oinfo is not None:
-            print(f"\nOPENING-LINE CHECK, {oinfo['open_games']} games with an opening total (the angle that matters if you bet early):")
+            print(f"\nOPENING-LINE CHECK, {oinfo['open_games']} games, DIAGNOSTIC ONLY: it knows the QB who actually played and the observed "
+                  f"weather, which Monday's board cannot know, so it flatters the model:")
             print(f"  correlation of (model - opening total) with (closing - opening total): {oinfo['corr_edge_vs_move']:+.3f} "
                   f"(positive = the market tends to move toward the model)")
-            print("  betting the OPENING total on the model's side (pushes excluded; need > 52.4% at -110), and how the line then moved:")
             print(orec.round(3).to_string(index=False))
             orec.to_csv(f"{BOARD_DIR}/totals_open_line_record_latest.csv", index=False)
-            ninfo, nrec = open_line_check(r, col="model_nw")
-            print("\nSAME CHECK WITHOUT OBSERVED WIND AND COLD (only what is knowable when the opening total posts; dome/roof kept):")
-            print(f"  correlation of (model - opening total) with (closing - opening total): {ninfo['corr_edge_vs_move']:+.3f}")
-            print(nrec.round(3).to_string(index=False))
-            nrec.to_csv(f"{BOARD_DIR}/totals_open_line_record_noweather_latest.csv", index=False)
+            ninfo, nrec = open_line_check(r, col="model_mon")
+            if ninfo is not None:
+                print("\nAS OF MONDAY (the honest check): last game's QB with the early-exit blend, no observed wind or cold. "
+                      "This is what the Monday board could really have known:")
+                print(f"  correlation of (model - opening total) with (closing - opening total): {ninfo['corr_edge_vs_move']:+.3f}")
+                print("  betting the OPENING total on the model's side (need > 52.4% at -110), and how the line then moved:")
+                print(nrec.round(3).to_string(index=False))
+                nrec.to_csv(f"{BOARD_DIR}/totals_open_line_record_monday_latest.csv", index=False)
         else:
             print("\n(no opening totals in game_lines.csv for the test seasons: skipped the opening-line check)")
     else:
