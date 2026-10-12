@@ -70,8 +70,8 @@ if not boards:
     st.info("No boards yet. Run the workflow from the Actions tab.")
     st.stop()
 
-tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_wi, tab_fwd, tab_bets = st.tabs(
-    ["This week", "Game", "Teams", "QBs", "Schemes", "What-if", "Forward test", "Bets"])
+tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_wi, tab_fwd, tab_bets, tab_tot = st.tabs(
+    ["This week", "Game", "Teams", "QBs", "Schemes", "What-if", "Forward test", "Bets", "Totals"])
 
 # ---------------------------------------------------------------- This week
 with tab_week:
@@ -665,3 +665,55 @@ with tab_bets:
                 st.rerun()
         st.download_button("Download my_bets.csv", st.session_state["bets"].to_csv(index=False),
                            file_name="my_bets.csv", mime="text/csv")
+
+
+# ---------------------------------------------------------------- Totals (over/under)
+with tab_tot:
+    tb = load_csv("boards/totals_board_latest.csv")
+    if tb is None or tb.empty:
+        st.info("No totals board yet. The workflow builds one after each run (nfl_totals_pipeline.py).")
+    else:
+        built = pd.to_datetime(tb["built_at_utc"].iloc[0], utc=True).tz_convert("America/New_York")
+        st.caption(f"Built {built:%a %b %d, %I:%M %p} ET. Totals are in points of combined score; "
+                   "edge = model minus market, so a positive edge leans Over.")
+        tb = tb.copy()
+        tb["kickoff"] = pd.to_datetime(tb["kickoff_utc"], utc=True).dt.tz_convert("America/New_York")
+        tb = tb.sort_values("kickoff")
+        tv = pd.DataFrame({
+            "Game": tb["away_team"] + " @ " + tb["home_team"],
+            "Kick": tb["kickoff"].dt.strftime("%a %-I:%M"),
+            "Model": tb["fair_total"].round(1),
+            "Market": tb["market_total"].round(1),
+            "Edge": tb["edge_vs_market"].round(1),
+            "Lean": tb["lean"].fillna(""),
+        })
+        tv = tv.reindex(tv["Edge"].abs().sort_values(ascending=False, na_position="last").index)
+        st.dataframe(tv, hide_index=True, use_container_width=True)
+        if "weather_known" in tb and not tb["weather_known"].all():
+            st.caption("Weather is not in the data yet for some outdoor games, so they are treated as mild. "
+                       "Check the forecast before leaning on a wind or cold game.")
+
+        labels = (tb["away_team"] + " @ " + tb["home_team"]).tolist()
+        sel = st.selectbox("Game", labels, key="tot_game")
+        r = tb.iloc[labels.index(sel)]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Model total", f"{r['fair_total']:.1f}")
+        c2.metric("Market total", "-" if pd.isna(r["market_total"]) else f"{r['market_total']:.1f}")
+        c3.metric("Edge", "-" if pd.isna(r["edge_vs_market"]) else f"{r['edge_vs_market']:+.1f}")
+        units = [u for u in ["Offense", "Defense", "Pace", "Weather", "Context"] if u in r]
+        st.bar_chart(pd.DataFrame({"points vs league-average total": [r[u] for u in units]}, index=units), horizontal=True)
+        st.caption(f"Each bar moves the total away from the league average ({r['league_avg']:.1f}); the bars plus the average sum to the model total.")
+
+        bt = load_csv("boards/totals_backtest_latest.csv")
+        rec = load_csv("boards/totals_backtest_record_latest.csv")
+        if bt is not None and not bt.empty:
+            b0 = bt.iloc[0]
+            st.subheader("Does it beat the closing total?")
+            st.caption(f"Walk-forward test on {int(b0['games'])} games ({b0['seasons']}). Mean miss in points: "
+                       f"model {b0['mae_model']:.2f}, closing total {b0['mae_closing_total']:.2f}, "
+                       f"50/50 blend {b0['mae_blend_50_50']:.2f}. Lower is better.")
+            if rec is not None:
+                st.dataframe(rec.rename(columns={"edge_at_least": "Edge at least", "games": "Games", "win_pct": "Win %"}).round(3),
+                             hide_index=True, use_container_width=True)
+                st.caption("Over/under record when the model disagrees with the closing total. About 52.4% wins is break-even at -110.")
+

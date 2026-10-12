@@ -60,6 +60,13 @@ jobs:
           NEW_FEATS: ${{ vars.NEW_FEATS || '' }}                 # e.g. cpoe,early,xpl or all
         run: python nfl_spread_pipeline.py
 
+      - name: Build totals board
+        if: github.event.schedule != '0 14 * * 2'
+        continue-on-error: true                       # a totals problem never blocks the spread board
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: adds 1 Odds API credit per run for the current market total
+        run: python nfl_totals_pipeline.py
+
       - name: Build scheme profiles
         if: github.event.schedule != '0 14 * * 2'
         continue-on-error: true
