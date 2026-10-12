@@ -284,6 +284,9 @@ def historical_table(games, tg):
 
 
 # ================================================================== stage 5: model
+RESID_ALPHAS = [300, 1000, 3000]          # shrinkage strengths tried for the market-residual model
+
+
 class TotalsModel:
     def __init__(self, alpha=ALPHA):
         self.alpha = alpha
@@ -337,6 +340,16 @@ def backtest(d, X, Xmon):
         Xmn = Xmon.copy()                              # AS OF MONDAY: the starter you would have assumed (not the one who played)
         Xmn[["cold", "windy"]] = 0.0                   # and no observed wind/cold
         t["model_mon"] = m_nw.predict(Xmn[te]).values
+        # market-residual model: learn only what the opening total misses (actual - open), shrunk hard toward zero.
+        # Trained on games with an opening line, no observed wind/cold, scored with the as-of-Monday starters.
+        hasopen = d["mkt_total_open"].notna()
+        for a in RESID_ALPHAS:
+            tro = tr & hasopen
+            col = f"resid_a{a}"
+            t[col] = np.nan
+            if tro.sum() >= 200:
+                mr = TotalsModel(alpha=a).fit(Xn[tro], d.loc[tro, "total_pts"] - d.loc[tro, "mkt_total_open"])
+                t[col] = (d.loc[te, "mkt_total_open"] + mr.predict(Xmn[te])).values
         Xq = X.drop(columns=GROUPS["QB"])                # the same model with no QB information, to see what the QB features add
         t["model_noqb"] = TotalsModel().fit(Xq[tr], d.loc[tr, "total_pts"]).predict(Xq[te]).values
         t["naive"] = float(d.loc[tr, "total_pts"].mean())
@@ -432,8 +445,29 @@ def fetch_market_totals(key):
         dk = [oc["point"] for bk in ev.get("bookmakers", []) if bk.get("key") == "draftkings"
               for mk in bk.get("markets", []) if mk["key"] == "totals" for oc in mk["outcomes"] if oc["name"] == "Over"]
         if home and away and pts:
-            rows.append({"home_team": home, "away_team": away, "market_total_api": float(np.median(pts)),
-                         "market_books": len(pts), "dk_total": float(dk[0]) if dk else np.nan})
+            # every book's Over/Under (point, price, book) for line shopping
+            ov, un = [], []
+            for bk in ev.get("bookmakers", []):
+                for mk in bk.get("markets", []):
+                    if mk["key"] != "totals":
+                        continue
+                    for oc in mk["outcomes"]:
+                        if oc.get("point") is None or not -150 <= oc.get("price", -110) <= 130:
+                            continue
+                        rec = (float(oc["point"]), int(oc["price"]), bk.get("title") or bk.get("key"))
+                        if oc["name"] == "Over":
+                            ov.append(rec)
+                        elif oc["name"] == "Under":
+                            un.append(rec)
+            row = {"home_team": home, "away_team": away, "market_total_api": float(np.median(pts)),
+                   "market_books": len(pts), "dk_total": float(dk[0]) if dk else np.nan}
+            if ov:   # best Over = lowest number, then best price
+                b = min(ov, key=lambda r: (r[0], -r[1]))
+                row.update(best_over_line=b[0], best_over_price=b[1], best_over_book=b[2])
+            if un:   # best Under = highest number, then best price
+                b = max(un, key=lambda r: (r[0], r[1]))
+                row.update(best_under_line=b[0], best_under_price=b[1], best_under_book=b[2])
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -514,6 +548,23 @@ def main():
                 print("  betting the OPENING total on the model's side (need > 52.4% at -110), and how the line then moved:")
                 print(nrec.round(3).to_string(index=False))
                 nrec.to_csv(f"{BOARD_DIR}/totals_open_line_record_monday_latest.csv", index=False)
+            # market-residual model (learns only what the opening total misses), same honest as-of-Monday inputs
+            allrec = []
+            for a in RESID_ALPHAS:
+                col = f"resid_a{a}"
+                if col not in r:
+                    continue
+                rinfo, rrec = open_line_check(r, col=col, thresholds=[0.0, 0.5, 1.0, 1.5, 2.0])
+                if rinfo is None:
+                    continue
+                ro = r[r["mkt_total_open"].notna() & r[col].notna()]
+                print(f"\nMARKET-RESIDUAL MODEL (shrinkage alpha={a}), {rinfo['open_games']} games: mean miss {float((ro[col] - ro['total_pts']).abs().mean()):.3f} "
+                      f"vs opening total {float((ro['mkt_total_open'] - ro['total_pts']).abs().mean()):.3f}; "
+                      f"corr with the line's move {rinfo['corr_edge_vs_move']:+.3f}")
+                print(rrec.round(3).to_string(index=False))
+                allrec.append(rrec.assign(alpha=a))
+            if allrec:
+                pd.concat(allrec).to_csv(f"{BOARD_DIR}/totals_resid_record_latest.csv", index=False)
         else:
             print("\n(no opening totals in game_lines.csv for the test seasons: skipped the opening-line check)")
     else:
@@ -593,6 +644,21 @@ def main():
     board["edge_vs_dk"] = board["fair_total"] - board["dk_total"]
     board["lean"] = np.where(board["edge_vs_market"].isna() | (board["edge_vs_market"].abs() < 0.05), "",
                              np.where(board["edge_vs_market"] > 0, "Over", "Under"))
+    # line shopping: the best number/price at any book for the side the model leans
+    for c in ["best_over_line", "best_over_price", "best_under_line", "best_under_price"]:
+        if c not in board:
+            board[c] = np.nan
+    for c in ["best_over_book", "best_under_book"]:
+        if c not in board:
+            board[c] = ""
+    over = board["lean"] == "Over"
+    under = board["lean"] == "Under"
+    board["shop_line"] = np.where(over, board["best_over_line"], np.where(under, board["best_under_line"], np.nan))
+    board["shop_price"] = np.where(over, board["best_over_price"], np.where(under, board["best_under_price"], np.nan))
+    board["shop_book"] = np.where(over, board["best_over_book"], np.where(under, board["best_under_book"], ""))
+    # points gained vs the consensus number (positive = shopping helps)
+    board["shop_gain_pts"] = np.where(over, board["market_total"] - board["best_over_line"],
+                                      np.where(under, board["best_under_line"] - board["market_total"], np.nan))
     board = board.sort_values("kickoff_utc").reset_index(drop=True)
 
     pd.set_option("display.width", 250)
