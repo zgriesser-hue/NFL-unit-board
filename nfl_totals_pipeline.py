@@ -221,6 +221,9 @@ def backtest(d, X):
         m = TotalsModel().fit(X[tr], d.loc[tr, "total_pts"])
         t = d[te][["game_id", "season", "week", "total_pts", "mkt_total_close", "mkt_total_open"]].copy()
         t["model"] = m.predict(X[te]).values
+        Xn = X.copy()                                  # same model with the observed wind and cold removed: those are not
+        Xn[["cold", "windy"]] = 0.0                    # known when the opening total is posted (roof/dome is)
+        t["model_nw"] = TotalsModel().fit(Xn[tr], d.loc[tr, "total_pts"]).predict(Xn[te]).values
         t["naive"] = float(d.loc[tr, "total_pts"].mean())
         out.append(t)
     if not out:
@@ -237,13 +240,13 @@ def backtest(d, X):
     return r, summ
 
 
-def open_line_check(r, thresholds=BET_EDGES):
+def open_line_check(r, col="model", thresholds=BET_EDGES):
     """Does the model's disagreement with the OPENING total predict where the line moves by close, and would betting
     the open have won? Moving toward the model is closing-line value: the usual sign of a real edge."""
     o = r[r["mkt_total_open"].notna()].copy()
     if len(o) < 100:
         return None, None
-    o["edge_open"] = o["model"] - o["mkt_total_open"]
+    o["edge_open"] = o[col] - o["mkt_total_open"]
     o["move"] = o["mkt_total_close"] - o["mkt_total_open"]
     corr = float(np.corrcoef(o["edge_open"], o["move"])[0, 1])
     rec = over_under_record(o["edge_open"], o["total_pts"], o["mkt_total_open"], thresholds)
@@ -331,6 +334,11 @@ def main():
             print("  betting the OPENING total on the model's side (pushes excluded; need > 52.4% at -110), and how the line then moved:")
             print(orec.round(3).to_string(index=False))
             orec.to_csv(f"{BOARD_DIR}/totals_open_line_record_latest.csv", index=False)
+            ninfo, nrec = open_line_check(r, col="model_nw")
+            print("\nSAME CHECK WITHOUT OBSERVED WIND AND COLD (only what is knowable when the opening total posts; dome/roof kept):")
+            print(f"  correlation of (model - opening total) with (closing - opening total): {ninfo['corr_edge_vs_move']:+.3f}")
+            print(nrec.round(3).to_string(index=False))
+            nrec.to_csv(f"{BOARD_DIR}/totals_open_line_record_noweather_latest.csv", index=False)
         else:
             print("\n(no opening totals in game_lines.csv for the test seasons: skipped the opening-line check)")
     else:
