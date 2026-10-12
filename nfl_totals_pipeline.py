@@ -30,6 +30,7 @@ K_PRIOR = float(os.environ.get("TOT_K_PRIOR", "8"))          # a team's rating s
 PRIOR_W = float(os.environ.get("TOT_PRIOR_W", "0.6"))        # prior = this share last season's team mean, rest league mean
 DECAY = float(os.environ.get("TOT_DECAY", "1.0"))            # in-season game weight: 1.0 = equal, 0.9 = older games count 10% less
 ALPHA = float(os.environ.get("TOT_ALPHA", "100"))            # ridge strength on standardized features
+WEEK_MODE = os.environ.get("TOT_WEEK_MODE", "")              # "next" = Monday-morning run: build NEXT week's slate (the first week with no games played yet)
 BET_EDGES = [1.0, 2.0, 3.0]                                  # |model - closing total| thresholds for the over/under record
 
 RATE_COLS = ["off_pass_epa", "off_rush_epa", "def_pass_epa", "def_rush_epa", "plays", "pass_rate"]
@@ -275,9 +276,11 @@ def fetch_market_totals(key):
         pts = [oc["point"] for bk in ev.get("bookmakers", []) for mk in bk.get("markets", [])
                if mk["key"] == "totals" for oc in mk["outcomes"]
                if oc["name"] == "Over" and -150 <= oc.get("price", -110) <= 130]
+        dk = [oc["point"] for bk in ev.get("bookmakers", []) if bk.get("key") == "draftkings"
+              for mk in bk.get("markets", []) if mk["key"] == "totals" for oc in mk["outcomes"] if oc["name"] == "Over"]
         if home and away and pts:
-            rows.append({"home_team": home, "away_team": away,
-                         "market_total_api": float(np.median(pts)), "market_books": len(pts)})
+            rows.append({"home_team": home, "away_team": away, "market_total_api": float(np.median(pts)),
+                         "market_books": len(pts), "dk_total": float(dk[0]) if dk else np.nan})
     return pd.DataFrame(rows)
 
 
@@ -307,6 +310,17 @@ def main():
     season_now = int(played["season"].max())
     todo = games[games["total_pts"].isna() & (games["is_playoff"] == 0) & (games["season"] >= season_now)]
     wk = int(todo["week"].min()) if len(todo) else None
+    if WEEK_MODE == "next" and len(todo):                 # Monday morning: this week's Monday-night game is still unplayed,
+        _cur = games[(games["season"] == season_now) & (games["is_playoff"] == 0)]    # so skip ahead to a week with nothing played
+        _done = _cur.groupby("week")["total_pts"].apply(lambda x: int(x.notna().sum()))
+        _fresh = sorted(w for w in todo["week"].unique() if _done.get(w, 0) == 0)
+        if _fresh:
+            wk = int(_fresh[0])
+    _no_tape = games[(games["season"] == season_now) & (games["is_playoff"] == 0) & games["total_pts"].notna()
+                     & ~games["game_id"].isin(set(tg["game_id"]))]
+    if len(_no_tape):                                     # scores are in the schedule but play-by-play has not caught up yet
+        print(f"    WARNING: {len(_no_tape)} finished game(s) not in play-by-play yet, so ratings leave them out: "
+              + ", ".join((_no_tape["away_team"] + "@" + _no_tape["home_team"]).tolist()[:8]))
     teams_now = sorted(set(games.loc[games["season"] == season_now, "home_team"]) |
                        set(games.loc[games["season"] == season_now, "away_team"]))
     tg, cur = add_pregame_ratings(tg, teams_now, season_now)
@@ -369,7 +383,8 @@ def main():
         board[c] = parts[c].values
     board["fair_total"] = parts.sum(axis=1).values
     board["weather_known"] = weather_known.values
-    board["market_total"], board["market_src"] = up["mkt_total_close"].values, "nflverse schedule line"
+    board["market_total"] = up["mkt_total_close"].values
+    board["market_src"] = np.where(board["market_total"].notna(), "nflverse schedule line", "")
     if ODDS_API_KEY:
         try:
             mk = fetch_market_totals(ODDS_API_KEY)
@@ -382,8 +397,11 @@ def main():
             log(f"market totals captured for {int(got.sum())} of {len(board)} games")
         except Exception as e:
             print("Could not fetch market totals:", str(e)[:100])
+    if "dk_total" not in board:
+        board["dk_total"] = np.nan
     board["edge_vs_market"] = board["fair_total"] - board["market_total"]            # + = model likes the over
-    board["lean"] = np.where(board["edge_vs_market"].abs() < 0.05, "",
+    board["edge_vs_dk"] = board["fair_total"] - board["dk_total"]
+    board["lean"] = np.where(board["edge_vs_market"].isna() | (board["edge_vs_market"].abs() < 0.05), "",
                              np.where(board["edge_vs_market"] > 0, "Over", "Under"))
     board = board.sort_values("kickoff_utc").reset_index(drop=True)
 

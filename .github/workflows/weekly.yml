@@ -5,6 +5,7 @@ on:
     - cron: "0 22 * * 3"   # Wednesday 22:00 UTC (about 6pm ET): board after the first injury report
     - cron: "0 22 * * 5"   # Friday 22:00 UTC: board after the final injury report
     - cron: "0 14 * * 2"   # Tuesday 14:00 UTC: grade last week's games
+    - cron: "7 10 * * 1"   # Monday 10:07 UTC (about 6am ET): totals board for NEXT week against the early lines
   workflow_dispatch:        # lets you run it by hand from the Actions tab
     inputs:
       experiments:
@@ -47,7 +48,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build the board
-        if: github.event.schedule != '0 14 * * 2'   # the Tuesday run only grades, so it skips the board and the odds call
+        if: github.event.schedule != '0 14 * * 2' && github.event.schedule != '7 10 * * 1'   # Tuesday only grades; Monday only builds the totals board
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: leave the secret out to skip market capture
           EXPERIMENTS: ${{ inputs.experiments && '1' || '' }}
@@ -65,10 +66,11 @@ jobs:
         continue-on-error: true                       # a totals problem never blocks the spread board
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: adds 1 Odds API credit per run for the current market total
+          TOT_WEEK_MODE: ${{ github.event.schedule == '7 10 * * 1' && 'next' || '' }}   # Monday run builds next week's slate
         run: python nfl_totals_pipeline.py
 
       - name: Build scheme profiles
-        if: github.event.schedule != '0 14 * * 2'
+        if: github.event.schedule != '0 14 * * 2' && github.event.schedule != '7 10 * * 1'
         continue-on-error: true
         run: python scheme_profiles.py
 
