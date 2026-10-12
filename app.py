@@ -688,6 +688,13 @@ with tab_tot:
             "Lean": tb["lean"].fillna(""),
         })
         tv = tv.reindex(tv["Edge"].abs().sort_values(ascending=False, na_position="last").index)
+        if "home_QB_note" in tb:
+            flags = tb[tb["home_QB_note"].fillna("").str.startswith(("CHECK", "override")) | tb["away_QB_note"].fillna("").str.startswith(("CHECK", "override"))]
+            for _, fr in flags.iterrows():
+                for side, team in (("away", fr["away_team"]), ("home", fr["home_team"])):
+                    note = str(fr[f"{side}_QB_note"])
+                    if note.startswith(("CHECK", "override")):
+                        st.warning(f"{team}: {fr[f'{side}_QB']} - {note}")
         st.dataframe(tv, hide_index=True, use_container_width=True)
         if "weather_known" in tb and not tb["weather_known"].all():
             st.caption("Weather is not in the data yet for some outdoor games, so they are treated as mild. "
@@ -700,7 +707,7 @@ with tab_tot:
         c1.metric("Model total", f"{r['fair_total']:.1f}")
         c2.metric("Market total", "-" if pd.isna(r["market_total"]) else f"{r['market_total']:.1f}")
         c3.metric("Edge", "-" if pd.isna(r["edge_vs_market"]) else f"{r['edge_vs_market']:+.1f}")
-        units = [u for u in ["Offense", "Defense", "Pace", "Weather", "Context"] if u in r]
+        units = [u for u in ["QB", "Offense", "Defense", "Pace", "Weather", "Context"] if u in r]
         st.bar_chart(pd.DataFrame({"points vs league-average total": [r[u] for u in units]}, index=units), horizontal=True)
         st.caption(f"Each bar moves the total away from the league average ({r['league_avg']:.1f}); the bars plus the average sum to the model total.")
 
