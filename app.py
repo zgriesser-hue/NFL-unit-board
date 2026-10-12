@@ -724,3 +724,20 @@ with tab_tot:
                              hide_index=True, use_container_width=True)
                 st.caption("Over/under record when the model disagrees with the closing total. About 52.4% wins is break-even at -110.")
 
+        fw = load_csv("forward_totals_summary.csv")
+        if fw is not None and not fw.empty:
+            st.subheader("Forward test (real boards, graded after the games)")
+            c1, c2 = st.columns(2)
+            slots = [x for x in ["Mon", "Tue", "Wed", "Thu", "Fri"] if x in set(fw["slot"])] or sorted(set(fw["slot"]))
+            slot = c1.selectbox("Board built on", slots, key="fw_slot")
+            basis = c2.radio("Number", sorted(set(fw["basis"])), horizontal=True, key="fw_basis")
+            subset = st.radio("Games", sorted(set(fw["subset"])), horizontal=True, key="fw_subset")
+            v = fw[(fw["slot"] == slot) & (fw["basis"] == basis) & (fw["subset"] == subset) & (fw["games"] > 0)]
+            v = v[["edge_at_least", "bets", "win_rate", "roi_at_110", "avg_clv_pts", "moved_toward_pct"]].rename(columns={
+                "edge_at_least": "Edge at least", "bets": "Bets", "win_rate": "Win %", "roi_at_110": "ROI at -110",
+                "avg_clv_pts": "CLV pts", "moved_toward_pct": "Line moved toward model"})
+            st.dataframe(v.round(3), hide_index=True, use_container_width=True)
+            st.caption("Win % and ROI bet the model's side at the number the board saw (about 52.4% is break-even at -110). "
+                       "CLV is how many points the line moved toward the model's side by close; positive means you beat the closing number. "
+                       "Small samples swing a lot, so give it a month or two.")
+

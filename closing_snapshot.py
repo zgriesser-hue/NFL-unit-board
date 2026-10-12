@@ -17,7 +17,7 @@ import requests
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "boards", "closing_lines.csv")
 WINDOW_MIN = int(os.environ.get("CLOSE_WINDOW_MIN", "180"))
-COLS = ["captured_utc", "kickoff_utc", "home_team", "away_team", "home_spread", "books"]
+COLS = ["captured_utc", "kickoff_utc", "home_team", "away_team", "home_spread", "books", "total", "total_books", "dk_total"]
 
 TEAM_ABBR = {
     "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF",
@@ -37,7 +37,7 @@ def main():
         print("ODDS_API_KEY is not set; nothing captured.")
         return 0
     r = requests.get("https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds",
-                     params={"apiKey": key, "regions": "us", "markets": "spreads", "oddsFormat": "american"}, timeout=60)
+                     params={"apiKey": key, "regions": "us", "markets": "spreads,totals", "oddsFormat": "american"}, timeout=60)
     r.raise_for_status()
     now = pd.Timestamp.now(tz="UTC")
     rows = []
@@ -49,9 +49,16 @@ def main():
         home, away = TEAM_ABBR.get(ev["home_team"]), TEAM_ABBR.get(ev["away_team"])
         pts = [oc["point"] for bk in ev.get("bookmakers", []) for mk in bk.get("markets", []) if mk["key"] == "spreads"
                for oc in mk["outcomes"] if oc["name"] == ev["home_team"] and -150 <= oc.get("price", -110) <= 130]
-        if home and away and pts:
+        tpts = [oc["point"] for bk in ev.get("bookmakers", []) for mk in bk.get("markets", []) if mk["key"] == "totals"
+                for oc in mk["outcomes"] if oc["name"] == "Over" and -150 <= oc.get("price", -110) <= 130]
+        dk = [oc["point"] for bk in ev.get("bookmakers", []) if bk.get("key") == "draftkings" for mk in bk.get("markets", [])
+              if mk["key"] == "totals" for oc in mk["outcomes"] if oc["name"] == "Over"]
+        if home and away and (pts or tpts):
             rows.append({"captured_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "kickoff_utc": kick.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                         "home_team": home, "away_team": away, "home_spread": -float(np.median(pts)), "books": len(pts)})
+                         "home_team": home, "away_team": away,
+                         "home_spread": -float(np.median(pts)) if pts else np.nan, "books": len(pts),
+                         "total": float(np.median(tpts)) if tpts else np.nan, "total_books": len(tpts),
+                         "dk_total": float(dk[0]) if dk else np.nan})
     if not rows:
         print(f"No games start within the next {WINDOW_MIN} minutes (or no spreads posted); nothing captured.")
         return 0
@@ -60,7 +67,8 @@ def main():
     old = pd.read_csv(OUT) if os.path.exists(OUT) else pd.DataFrame(columns=COLS)
     pd.concat([old, new], ignore_index=True)[COLS].to_csv(OUT, index=False)
     for r_ in rows:
-        print(f"  {r_['away_team']} @ {r_['home_team']}: home spread {r_['home_spread']:+.1f} ({r_['books']} books), kickoff {r_['kickoff_utc']}")
+        print(f"  {r_['away_team']} @ {r_['home_team']}: home spread {r_['home_spread']:+.1f} ({r_['books']} books), "
+              f"total {r_['total']} ({r_['total_books']} books), kickoff {r_['kickoff_utc']}")
     print(f"Captured {len(rows)} games.")
     return 0
 
