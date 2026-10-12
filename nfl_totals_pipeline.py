@@ -31,6 +31,7 @@ PRIOR_W = float(os.environ.get("TOT_PRIOR_W", "0.6"))        # prior = this shar
 DECAY = float(os.environ.get("TOT_DECAY", "1.0"))            # in-season game weight: 1.0 = equal, 0.9 = older games count 10% less
 ALPHA = float(os.environ.get("TOT_ALPHA", "100"))            # ridge strength on standardized features
 WEEK_MODE = os.environ.get("TOT_WEEK_MODE", "")              # "next" = Monday-morning run: build NEXT week's slate (the first week with no games played yet)
+USE_FORECAST = os.environ.get("TOT_FORECAST", "1") != "0"      # fill missing game weather from a free forecast (Open-Meteo); set TOT_FORECAST=0 to turn off
 BET_EDGES = [1.0, 2.0, 3.0]                                  # |model - closing total| thresholds for the over/under record
 
 RATE_COLS = ["off_pass_epa", "off_rush_epa", "def_pass_epa", "def_rush_epa", "plays", "pass_rate"]
@@ -263,6 +264,45 @@ def open_line_check(r, col="model", thresholds=BET_EDGES):
     return {"open_games": len(o), "corr_edge_vs_move": corr}, rec
 
 
+# ================================================================== stage 5b: forecast weather
+STADIUMS = {   # home venue (latitude, longitude); a few km is plenty for a forecast
+    "ARI": (33.5276, -112.2626), "ATL": (33.7554, -84.4009), "BAL": (39.2780, -76.6227), "BUF": (42.7738, -78.7870),
+    "CAR": (35.2258, -80.8528), "CHI": (41.8623, -87.6167), "CIN": (39.0955, -84.5161), "CLE": (41.5061, -81.6995),
+    "DAL": (32.7473, -97.0945), "DEN": (39.7439, -105.0201), "DET": (42.3400, -83.0456), "GB": (44.5013, -88.0622),
+    "HOU": (29.6847, -95.4107), "IND": (39.7601, -86.1639), "JAX": (30.3239, -81.6373), "KC": (39.0489, -94.4839),
+    "LV": (36.0909, -115.1833), "LAC": (33.9535, -118.3392), "LA": (33.9535, -118.3392), "MIA": (25.9580, -80.2389),
+    "MIN": (44.9738, -93.2577), "NE": (42.0909, -71.2643), "NO": (29.9511, -90.0812), "NYG": (40.8135, -74.0745),
+    "NYJ": (40.8135, -74.0745), "PHI": (39.9008, -75.1675), "PIT": (40.4468, -80.0158), "SF": (37.4030, -121.9697),
+    "SEA": (47.5952, -122.3316), "TB": (27.9759, -82.5033), "TEN": (36.1665, -86.7713), "WAS": (38.9076, -76.8645)}
+
+
+def fetch_forecast_weather(up):
+    """Forecast temperature (F) and wind (mph) at kickoff + 90 minutes for outdoor games that have no weather yet.
+    Free Open-Meteo forecast, no key. Returns {game_id: (temp, wind)}. Neutral-site games are skipped (venue unknown)."""
+    import requests
+    out = {}
+    need_all = up[~up["roof"].isin(["dome", "closed"]) & up["temp_actual"].isna() & (up["neutral"] == 0)]
+    for team, grp in need_all.groupby("home_team"):
+        if team not in STADIUMS:
+            continue
+        lat, lon = STADIUMS[team]
+        r = requests.get("https://api.open-meteo.com/v1/forecast",
+                         params={"latitude": lat, "longitude": lon, "hourly": "temperature_2m,wind_speed_10m",
+                                 "temperature_unit": "fahrenheit", "wind_speed_unit": "mph",
+                                 "timezone": "UTC", "forecast_days": 16}, timeout=30)
+        r.raise_for_status()
+        h = r.json()["hourly"]
+        times = pd.to_datetime(pd.Series(h["time"]), utc=True)
+        for _, g in grp.iterrows():
+            gt = g["kickoff_utc"] + pd.Timedelta(minutes=90)
+            gap = (times - gt).abs()
+            i = int(gap.idxmin())
+            t, w = h["temperature_2m"][i], h["wind_speed_10m"][i]
+            if gap[i] <= pd.Timedelta(hours=2) and t is not None and w is not None:
+                out[g["game_id"]] = (float(t), float(w))
+    return out
+
+
 # ================================================================== stage 6: market totals
 def fetch_market_totals(key):
     """Consensus (median across books) current game total. Costs 1 Odds API credit."""
@@ -369,6 +409,17 @@ def main():
     for side, col in [("h", "home_team"), ("a", "away_team")]:
         for c in RATE_COLS:
             up[f"{side}_{c}"] = up[col].map(lambda t, c=c: cur.get((t, c), np.nan))
+    up["weather_src"] = np.where(up["roof"].isin(["dome", "closed"]), "dome",
+                                 np.where(up["temp_actual"].notna(), "observed", "none"))
+    if USE_FORECAST:
+        try:
+            fc = fetch_forecast_weather(up)
+            for gid, (tmp_f, wind_mph) in fc.items():
+                m = up["game_id"] == gid
+                up.loc[m, "temp_actual"], up.loc[m, "wind_actual"], up.loc[m, "weather_src"] = tmp_f, wind_mph, "forecast"
+            log(f"forecast weather filled for {len(fc)} outdoor game(s)")
+        except Exception as e:
+            print("Could not fetch forecast weather (games stay at mild defaults):", str(e)[:100])
     Xu = make_features(up)
     weather_known = up["temp_actual"].notna() | up["roof"].isin(["dome", "closed"])
     ok = Xu.notna().all(axis=1)
@@ -383,6 +434,9 @@ def main():
         board[c] = parts[c].values
     board["fair_total"] = parts.sum(axis=1).values
     board["weather_known"] = weather_known.values
+    board["weather_src"] = up["weather_src"].values
+    board["temp_f"] = np.where(up["roof"].isin(["dome", "closed"]), np.nan, up["temp_actual"]).astype(float)
+    board["wind_mph"] = np.where(up["roof"].isin(["dome", "closed"]), np.nan, up["wind_actual"]).astype(float)
     board["market_total"] = up["mkt_total_close"].values
     board["market_src"] = np.where(board["market_total"].notna(), "nflverse schedule line", "")
     if ODDS_API_KEY:
