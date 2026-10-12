@@ -30,6 +30,7 @@ BOARD_DIR = f"{ROOT}/boards"
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 TEST_SEASONS = [2023, 2024, 2025]
+WIND_CAP = 8.0       # mph above 10 that still counts (wind check: capping at 8 had the lowest miss, and matches the data in 21+ mph games)
 K_PRIOR = float(os.environ.get("TOT_K_PRIOR", "8"))          # a team's rating starts as K games of prior
 PRIOR_W = float(os.environ.get("TOT_PRIOR_W", "0.6"))        # prior = this share last season's team mean, rest league mean
 DECAY = float(os.environ.get("TOT_DECAY", "1.0"))            # in-season game weight: 1.0 = equal, 0.9 = older games count 10% less
@@ -264,7 +265,7 @@ def make_features(df, qcol="qb_now"):
     temp = df["temp_actual"].where(~dome, 70.0).fillna(65.0)          # unknown outdoor weather = mild
     wind = df["wind_actual"].where(~dome, 0.0).fillna(0.0)
     X["cold"] = (45.0 - temp).clip(lower=0)
-    X["windy"] = (wind - 10.0).clip(lower=0)
+    X["windy"] = (wind - 10.0).clip(0, WIND_CAP)                   # wind above 10 mph, capped: a straight line overshoots in gales
     X["neutral"] = df["neutral"].astype(float)
     X["div"] = df["div"].astype(float)
     return X[FEATS]
@@ -326,7 +327,7 @@ def wind_check(d, X):
     print("\nWIND CHECK, outdoor games with observed wind (mph at kickoff). actual_minus_close near 0 = the closing total already prices wind:")
     print(t.round(2).to_string())
     wd = w.fillna(0.0)
-    variants = {"current: (wind-10), no cap": (wd - 10).clip(lower=0), "(wind-10), capped at 8": (wd - 10).clip(0, 8),
+    variants = {"(wind-10), no cap": (wd - 10).clip(lower=0), "(wind-10), capped at 8 (current)": (wd - 10).clip(0, 8),
                 "(wind-14)": (wd - 14).clip(lower=0), "(wind-14), capped at 8": (wd - 14).clip(0, 8), "no wind term": wd * 0.0}
     rows = []
     for name, col in variants.items():
