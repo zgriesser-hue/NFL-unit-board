@@ -8,6 +8,10 @@ on:
     - cron: "7 10 * * 1"   # Monday 10:07 UTC (about 6am ET): totals board for NEXT week against the early lines
   workflow_dispatch:        # lets you run it by hand from the Actions tab
     inputs:
+      totals_next_week:
+        description: "Totals board for NEXT week's games (use Monday, before Monday night is played)"
+        type: boolean
+        default: false
       experiments:
         description: "Test rating variants (opponent adjustment, recency decay, extra EPA stats) side by side"
         type: boolean
@@ -66,7 +70,7 @@ jobs:
         continue-on-error: true                       # a totals problem never blocks the spread board
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: adds 1 Odds API credit per run for the current market total
-          TOT_WEEK_MODE: ${{ github.event.schedule == '7 10 * * 1' && 'next' || '' }}   # Monday run builds next week's slate
+          TOT_WEEK_MODE: ${{ (github.event.schedule == '7 10 * * 1' || inputs.totals_next_week) && 'next' || '' }}   # Monday run (or the manual box) builds next week's slate
         run: python nfl_totals_pipeline.py
 
       - name: Build scheme profiles
