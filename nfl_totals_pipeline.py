@@ -312,6 +312,42 @@ class TotalsModel:
         return self.parts(X).sum(axis=1)
 
 
+def wind_check(d, X):
+    """Is the straight-line wind penalty right? Bins show what high wind really did to totals and whether the closing total
+    already prices it; the variants re-run the walk-forward test with other wind shapes (lower MAE = better)."""
+    dome = d["roof"].isin(["dome", "closed"])
+    w = d["wind_actual"].where(~dome).astype(float)
+    o = d[w.notna() & d["mkt_total_close"].notna()].copy()
+    o["wind"] = w[o.index]
+    o["bin"] = pd.cut(o["wind"], [-1, 7, 10, 13, 16, 20, 100], labels=["0-7", "8-10", "11-13", "14-16", "17-20", "21+"])
+    t = o.groupby("bin", observed=True).agg(games=("wind", "size"), avg_total=("total_pts", "mean"),
+                                           avg_closing_total=("mkt_total_close", "mean"))
+    t["actual_minus_close"] = o.groupby("bin", observed=True).apply(lambda g: (g["total_pts"] - g["mkt_total_close"]).mean(), include_groups=False)
+    print("\nWIND CHECK, outdoor games with observed wind (mph at kickoff). actual_minus_close near 0 = the closing total already prices wind:")
+    print(t.round(2).to_string())
+    wd = w.fillna(0.0)
+    variants = {"current: (wind-10), no cap": (wd - 10).clip(lower=0), "(wind-10), capped at 8": (wd - 10).clip(0, 8),
+                "(wind-14)": (wd - 14).clip(lower=0), "(wind-14), capped at 8": (wd - 14).clip(0, 8), "no wind term": wd * 0.0}
+    rows = []
+    for name, col in variants.items():
+        Xv = X.copy()
+        Xv["windy"] = col.values
+        errs = []
+        for sn in TEST_SEASONS:
+            tr, te = d["season"] < sn, d["season"] == sn
+            if tr.sum() < 200 or te.sum() == 0:
+                continue
+            m = TotalsModel().fit(Xv[tr], d.loc[tr, "total_pts"])
+            errs.append((m.predict(Xv[te]) - d.loc[te, "total_pts"]).abs())
+        if errs:
+            e = pd.concat(errs)
+            hw = e.index.isin(o.index[o["wind"] >= 14])
+            rows.append({"wind shape": name, "mae_all": float(e.mean()), "mae_windy_games_14plus": float(e[hw].mean()) if hw.any() else np.nan,
+                         "windy_games": int(hw.sum())})
+    print("  walk-forward miss by wind shape:")
+    print(pd.DataFrame(rows).round(3).to_string(index=False))
+
+
 def over_under_record(edge, actual, line, thresholds=BET_EDGES):
     rows = []
     for t in thresholds:
@@ -569,6 +605,11 @@ def main():
             print("\n(no opening totals in game_lines.csv for the test seasons: skipped the opening-line check)")
     else:
         print("\n(not enough history for the out-of-sample check)")
+
+    try:
+        wind_check(d, X)
+    except Exception as e:
+        print("(wind check skipped:", str(e)[:100] + ")")
 
     if wk is None:
         print("No upcoming regular-season games found; nothing to put on the board.")
