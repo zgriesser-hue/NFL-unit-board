@@ -391,6 +391,23 @@ with tab_fwd:
             s["roi_at_110"] = (s["roi_at_110"] * 100).round(1).astype(str) + "%"
             st.dataframe(s, hide_index=True, use_container_width=True)
             st.caption("Break-even at -110 is 52.4%. Small samples swing wildly, so wait for many weeks.")
+        if "close_home_spread" in games and games["close_home_spread"].notna().any():
+            cg = games.dropna(subset=["close_home_spread"])
+            st.subheader("Against the closing line")
+            k1, k2, k3 = st.columns(3)
+            k1.metric("Games with a closing line", len(cg))
+            k2.metric("Model miss", f"{(cg['fair_home_spread'] - cg['margin']).abs().mean():.2f}")
+            k3.metric("Closing-line miss", f"{(cg['close_home_spread'] - cg['margin']).abs().mean():.2f}")
+            cs = load_csv("boards/forward_test_closing_summary.csv")
+            if cs is not None and len(cs):
+                cs = cs.copy()
+                cs["win_rate"] = (cs["win_rate"] * 100).round(1).astype(str) + "%"
+                cs["roi_at_110"] = (cs["roi_at_110"] * 100).round(1).astype(str) + "%"
+                st.dataframe(cs, hide_index=True, use_container_width=True)
+            st.caption("The closing line is the market's last word before kickoff and the hardest line to beat. "
+                       "Betting the model's side against it at -110 needs about 52.4% to break even.")
+        else:
+            st.caption("No closing lines saved yet. The closing-lines workflow captures them shortly before kickoff.")
         if "market_home_spread" in games and games["market_home_spread"].notna().any():
             h = games.dropna(subset=["market_home_spread"]).copy()
             h["edge"] = h["fair_home_spread"] - h["market_home_spread"]
@@ -558,9 +575,24 @@ with tab_bets:
             bets["home_score"], bets["away_score"] = np.nan, np.nan
         for c in ("line", "odds", "stake", "model_home", "market_home"):
             bets[c] = pd.to_numeric(bets[c], errors="coerce")
+        bets["close_home"] = np.nan
+        clo = load_csv("boards/closing_lines.csv")
+        if clo is not None and len(clo):
+            clo = clo.copy()
+            clo["captured_utc"] = pd.to_datetime(clo["captured_utc"], utc=True)
+            clo["kickoff_utc"] = pd.to_datetime(clo["kickoff_utc"], utc=True)
+            clo = clo[clo["captured_utc"] < clo["kickoff_utc"]].sort_values("captured_utc")
+            clo["season"] = np.where(clo["kickoff_utc"].dt.month >= 8, clo["kickoff_utc"].dt.year, clo["kickoff_utc"].dt.year - 1)
+            clo = clo.groupby(["season", "home_team", "away_team"], as_index=False).tail(1)[["season", "home_team", "away_team", "home_spread"]]
+            bets["season"] = pd.to_numeric(bets["season"], errors="coerce")
+            bets = bets.merge(clo.rename(columns={"home_spread": "close_home_new"}), on=["season", "home_team", "away_team"], how="left")
+            bets["close_home"] = bets["close_home_new"]
+            bets = bets.drop(columns=["close_home_new"])
         is_prop = bets["type"].fillna("Spread").eq("Prop")
         is_tot = bets["type"].fillna("Spread").eq("Total")
         is_ml = bets["type"].fillna("Spread").eq("Moneyline")
+        close_pick = np.where(bets["pick"] == bets["home_team"], -bets["close_home"], bets["close_home"])
+        bets["clv"] = np.where(is_prop | is_tot | is_ml, np.nan, bets["line"] - close_pick)    # + = you got a better number than the close
         is_home = bets["pick"] == bets["home_team"]
         pm = np.where(is_home, bets["home_score"] - bets["away_score"], bets["away_score"] - bets["home_score"])
         cover = pm + bets["line"]                                 # > 0 means the bet covered
@@ -608,9 +640,18 @@ with tab_bets:
             cum = done.reset_index(drop=True)["profit"].cumsum()
             st.subheader("Profit over time")
             st.line_chart(cum, height=200)
+        cv = bets["clv"].dropna()
+        if len(cv):
+            st.subheader("Closing line value")
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Spread bets with a closing line", len(cv))
+            q2.metric("Average CLV (pts)", f"{cv.mean():+.2f}")
+            q3.metric("Beat the close", f"{(cv > 0).mean():.0%}")
+            st.caption("CLV compares the line you got with the market's closing line, in points for your side "
+                       "(+ means you got a better number). Beating the close over many bets is the best early sign of an edge.")
         st.subheader("All bets")
         show = bets[["placed", "week", "away_team", "home_team", "bet", "odds", "stake", "result", "profit",
-                     "model_view", "book", "note"]].iloc[::-1]
+                     "clv", "model_view", "book", "note"]].iloc[::-1]
         st.dataframe(show.round(2), hide_index=True, use_container_width=True)
         with st.expander("Fix or delete a bet"):
             raw = st.session_state["bets"].reset_index(drop=True)

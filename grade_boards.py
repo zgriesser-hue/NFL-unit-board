@@ -30,6 +30,22 @@ if g.empty:
     print("No finished games with a saved pregame board yet.")
     raise SystemExit(0)
 g["margin"] = g["home_score"] - g["away_score"]
+
+# closing lines (boards/closing_lines.csv, captured by closing_snapshot.py): last capture before each game's kickoff
+cl_path = f"{ROOT}/boards/closing_lines.csv"
+g["close_home_spread"] = np.nan
+if os.path.exists(cl_path):
+    cl = pd.read_csv(cl_path)
+    cl["captured_utc"] = pd.to_datetime(cl["captured_utc"], utc=True)
+    cl["kickoff_utc"] = pd.to_datetime(cl["kickoff_utc"], utc=True)
+    cl = cl[cl["captured_utc"] < cl["kickoff_utc"]].sort_values("captured_utc")
+    cl = cl.groupby(["home_team", "away_team", "kickoff_utc"], as_index=False).tail(1)
+    cl = cl.rename(columns={"kickoff_utc": "close_kick", "home_spread": "close_home_spread_new"})
+    g = g.sort_values("kickoff_utc")
+    m = pd.merge_asof(g, cl.sort_values("close_kick")[["home_team", "away_team", "close_kick", "close_home_spread_new"]],
+                      left_on="kickoff_utc", right_on="close_kick", by=["home_team", "away_team"],
+                      direction="nearest", tolerance=pd.Timedelta(days=1))
+    g["close_home_spread"] = m["close_home_spread_new"].values
 g.to_csv(f"{ROOT}/forward_test_games.csv", index=False)
 
 mae = lambda p, y: float(np.abs(p - y).mean())
@@ -55,3 +71,24 @@ if "market_home_spread" in g:
             print(f"  |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {roi:+.1%}")
             rows.append({"edge_threshold": thr, "bets": n, "win_rate": wr, "roi_at_110": roi})
 pd.DataFrame(rows).to_csv(f"{ROOT}/forward_test_summary.csv", index=False)
+
+# same table against the CLOSING line (only games where a closing capture exists)
+crow = []
+if g["close_home_spread"].notna().any():
+    c = g.dropna(subset=["close_home_spread"]).copy()
+    print(f"\nOn the {len(c)} games with a closing line: model {mae(c['fair_home_spread'], c['margin']):.2f} "
+          f"| closing line {mae(c['close_home_spread'], c['margin']):.2f}")
+    edge = c["fair_home_spread"] - c["close_home_spread"]
+    cover = c["margin"] - c["close_home_spread"]
+    print("Betting the model's side vs the CLOSING line:")
+    for thr in [0, 1, 2, 3]:
+        sel = c[(edge.abs() >= thr) & (cover != 0)]
+        if len(sel) == 0:
+            continue
+        win = np.sign(edge[sel.index]) == np.sign(cover[sel.index])
+        n, wr = len(sel), float(win.mean())
+        roi = wr * 100 / 110 - (1 - wr)
+        print(f"  |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {roi:+.1%}")
+        crow.append({"edge_threshold": thr, "bets": n, "win_rate": wr, "roi_at_110": roi})
+pd.DataFrame(crow, columns=["edge_threshold", "bets", "win_rate", "roi_at_110"]).to_csv(
+    f"{ROOT}/boards/forward_test_closing_summary.csv", index=False)

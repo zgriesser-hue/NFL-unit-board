@@ -1,0 +1,53 @@
+name: nfl-closing-lines
+
+# Captures the market spread shortly before kickoff windows so the forward test and the bet tracker can use real closing lines.
+# One Odds API credit per run. Times are UTC for the EDT part of the season (kickoffs shift one hour later in UTC after
+# the clocks change in November; the 180-minute window still catches them, just earlier before kickoff).
+on:
+  schedule:
+    - cron: "45 23 * * 4"   # Thu 7:45pm ET: Thursday night
+    - cron: "0 13 * * 0"    # Sun 9:00am ET: London games (skips if none)
+    - cron: "30 16 * * 0"   # Sun 12:30pm ET: 1pm games
+    - cron: "30 19 * * 0"   # Sun 3:30pm ET: 4pm games
+    - cron: "30 23 * * 0"   # Sun 7:30pm ET: Sunday night
+    - cron: "30 23 * * 1"   # Mon 7:30pm ET: Monday night
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nfl-closing-lines
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: pip install pandas numpy requests
+
+      - name: Capture closing lines
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python closing_snapshot.py
+
+      - name: Commit
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add boards/closing_lines.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "closing lines $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
