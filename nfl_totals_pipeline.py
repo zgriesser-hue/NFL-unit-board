@@ -632,6 +632,10 @@ def main():
                           "many splits, so only trust 100+ games with the same result in all seasons):")
                     print(sm.round(3).to_string(index=False))
                     sm.to_csv(f"{BOARD_DIR}/totals_signal_map_latest.csv", index=False)
+                    b = r[r["mkt_total_open"].notna() & (r["total_pts"] != r["mkt_total_open"])]
+                    print(f"  BASELINE with no model: the average total moves {float((b['mkt_total_close'] - b['mkt_total_open']).mean()):+.2f} pts from open to close; "
+                          f"betting every Under at the open wins {float((b['total_pts'] < b['mkt_total_open']).mean()):.3f}, every Over {float((b['total_pts'] > b['mkt_total_open']).mean()):.3f} "
+                          f"({len(b)} games). The 'line moved toward' columns above include this drift, which flatters Unders if lines tend to fall.")
             # market-residual model (learns only what the opening total misses), same honest as-of-Monday inputs
             allrec = []
             for a in RESID_ALPHAS:
