@@ -1,0 +1,37 @@
+name: nba-minutes
+
+# Tests whether knowing which teammates are out improves NBA player-minutes projections (the base for player props).
+# Run by hand: Actions > nba-minutes > Run workflow. Needs no API key.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn requests pyarrow
+      - name: Download NBA player box scores
+        run: python -u nba_fetch_players.py
+      - name: Run the minutes test
+        run: python -u nba_minutes_test.py
+      - name: Commit results
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add boards/nba_minutes_latest.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "nba minutes test $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
