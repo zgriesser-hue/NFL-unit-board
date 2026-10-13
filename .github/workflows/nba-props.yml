@@ -1,0 +1,43 @@
+name: nba-props
+
+# Saves the day's NBA player prop lines (ParlayAPI) to boards/nba_props.csv. ~3 credits per run.
+# Run once by hand first (Actions > nba-props > Run workflow). It runs each day at 5pm ET once the season is on.
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nba-props
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas requests
+      - name: Save today's prop lines
+        env:
+          PARLAY_API_KEY: ${{ secrets.PARLAY_API_KEY }}
+        run: python -u nba_props_snapshot.py
+      - name: Commit results
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add boards/nba_props.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "nba props $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
