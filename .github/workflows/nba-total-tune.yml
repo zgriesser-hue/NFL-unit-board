@@ -1,0 +1,26 @@
+name: nba-total-tune
+
+# Tunes the NBA rating settings and tests a two-part (possessions x efficiency) total model against the closing totals.
+# Takes about 10-15 minutes. Run by hand: Actions > nba-total-tune > Run workflow. Needs no API key.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn requests pyarrow
+      - name: Download NBA box scores
+        run: python -u nba_fetch_games.py
+        continue-on-error: true
+      - name: Tune and test the total model
+        run: python -u nba_total_tune.py
