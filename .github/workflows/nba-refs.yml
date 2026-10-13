@@ -1,0 +1,43 @@
+name: nba-refs
+
+# Downloads the referee crew for every NBA game since 2018 (ESPN's free game summaries) into data/nba_refs.csv.
+# Each run works for up to ~35 minutes and saves its progress; run it again until the log says "complete".
+# Then run nba-total-tune to see whether referees or travel help the total model.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nba-refs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy requests pyarrow
+      - name: Download NBA box scores
+        run: python -u nba_fetch_games.py
+      - name: Download referee crews
+        run: python -u nba_fetch_refs.py
+      - name: Commit results
+        if: always()
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add -f data/nba_refs.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "nba referees $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
