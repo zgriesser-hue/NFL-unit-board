@@ -46,6 +46,7 @@ def log(msg):
 # ------------------------------------------------------------------ data
 def load_games(path):
     g = pd.read_csv(path, dtype={"game_id": str})
+    g = g[g["home"].isin(set(NAMES.values())) & g["away"].isin(set(NAMES.values()))]       # drop All-Star and exhibition teams
     g["date"] = pd.to_datetime(g["date"])
     g = g.dropna(subset=["home_pts", "away_pts"]).sort_values(["date", "game_id"]).reset_index(drop=True)
     for s in ("home", "away"):

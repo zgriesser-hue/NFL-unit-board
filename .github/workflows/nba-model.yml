@@ -1,6 +1,6 @@
 name: nba-model
 
-# Downloads NBA game logs (free, nba_api), runs the walk-forward backtest, and builds the board against the saved lines.
+# Downloads NBA box scores (free sportsdataverse files on GitHub), runs the walk-forward backtest, and builds the board against the saved lines.
 # Run it by hand first (Actions > nba-model > Run workflow). During the season it also runs each morning ET.
 on:
   schedule:
@@ -26,11 +26,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install packages
-        run: pip install pandas numpy scikit-learn requests nba_api
+        run: pip install pandas numpy scikit-learn requests pyarrow
 
-      - name: Download NBA game logs
-        run: python nba_fetch_games.py
-        continue-on-error: true      # stats.nba.com can refuse cloud servers; the saved file is used if so
+      - name: Download NBA box scores
+        run: python -u nba_fetch_games.py
+        continue-on-error: true      # stats.nba.com is skipped if the files are not reachable; the saved file is used instead
 
       - name: Run the NBA model
         run: python nba_model_pipeline.py
