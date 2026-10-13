@@ -29,13 +29,13 @@ def current_season(today=None):
     return t.year if t.month >= 9 else t.year - 1
 
 
-def fetch_season(y, tries=3):
+def fetch_season(y, tries=2):
     from nba_api.stats.endpoints import leaguegamelog
     last = None
     for i in range(tries):
         try:
             raw = leaguegamelog.LeagueGameLog(season=season_label(y), season_type_all_star="Regular Season",
-                                              player_or_team_abbreviation="T", timeout=60).get_data_frames()[0]
+                                              player_or_team_abbreviation="T", timeout=45).get_data_frames()[0]
             return to_games(raw, y)
         except Exception as e:                         # blocked, timed out, or not published yet
             last = e
@@ -73,6 +73,10 @@ def main():
             print(f"  {season_label(y)}: could not download ({e})")
             failed.append(y)
             parts.append(old[old["season"] == y])      # keep what we had
+            if len(failed) >= 2:                       # blocked or down: stop instead of waiting through every season
+                print("  Two downloads failed in a row, so stopping. Keeping the saved file.")
+                parts.extend(old[old["season"] == z] for z in todo if z > y)
+                break
         time.sleep(1.5)
     out = pd.concat(parts, ignore_index=True)
     out = out.drop_duplicates("game_id").sort_values(["date", "game_id"]).reset_index(drop=True)
