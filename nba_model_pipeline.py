@@ -191,7 +191,7 @@ def backtest(d):
     for s in test:
         tr = (d["season"] < s) & (d["season"] > seasons[0])                      # skip the very first season (ratings still cold)
         te = d["season"] == s
-        if tr.sum() < 1500:
+        if tr.sum() < 1000:
             continue
         t = d[te][["game_id", "season", "date", "home", "away", "margin", "total", "games_played"]].copy()
         for tgt in ("margin", "total"):
