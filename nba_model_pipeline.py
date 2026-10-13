@@ -46,11 +46,18 @@ def log(msg):
 # ------------------------------------------------------------------ data
 def load_games(path):
     g = pd.read_csv(path, dtype={"game_id": str})
-    g = g[g["home"].isin(set(NAMES.values())) & g["away"].isin(set(NAMES.values()))]       # drop All-Star and exhibition teams
-    g["date"] = pd.to_datetime(g["date"])
-    g = g.dropna(subset=["home_pts", "away_pts"]).sort_values(["date", "game_id"]).reset_index(drop=True)
+    g = g[g["home"].isin(set(NAMES.values())) & g["away"].isin(set(NAMES.values()))].copy()       # drop All-Star and exhibition teams
+    g["date"] = pd.to_datetime(g["date"], errors="coerce")
+    num = ["home_pts", "away_pts", "minutes"] + [f"{s}_{c}" for s in ("home", "away") for c in ("fga", "fta", "oreb", "tov")]
+    g[num] = g[num].apply(pd.to_numeric, errors="coerce")
     for s in ("home", "away"):
         g[f"{s}_poss"] = g[f"{s}_fga"] + 0.44 * g[f"{s}_fta"] - g[f"{s}_oreb"] + g[f"{s}_tov"]
+    ok = g["date"].notna() & g[["home_pts", "away_pts", "minutes", "home_poss", "away_poss"]].notna().all(axis=1) \
+        & g["home_poss"].between(60, 140) & g["away_poss"].between(60, 140)                  # missing or impossible box scores
+    if (~ok).any():
+        bad = g[~ok].groupby("season").size().to_dict()
+        log(f"dropped {int((~ok).sum())} games with missing or impossible box-score numbers (by season): {bad}")
+    g = g[ok].sort_values(["date", "game_id"]).reset_index(drop=True)
     scale = 240.0 / g["minutes"].clip(lower=200)                      # overtime games: put everything on a 48-minute basis
     g["poss"] = (g["home_poss"] + g["away_poss"]) / 2 * scale
     g["h_ortg"] = g["home_pts"] / (g["home_poss"] + g["away_poss"]) * 200      # points per 100 possessions
