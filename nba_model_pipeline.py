@@ -64,7 +64,8 @@ def load_games(path):
         log(f"dropped {int((~ok).sum())} games with missing or impossible box-score numbers (by season): {bad}")
     g = g[ok].sort_values(["date", "game_id"]).reset_index(drop=True)
     scale = 240.0 / g["minutes"].clip(lower=200)                      # overtime games: put everything on a 48-minute basis
-    g["poss"] = (g["home_poss"] + g["away_poss"]) / 2 * scale
+    g["poss_raw"] = (g["home_poss"] + g["away_poss"]) / 2                 # possessions per team as played (overtime included)
+    g["poss"] = g["poss_raw"] * scale
     g["h_ortg"] = g["home_pts"] / (g["home_poss"] + g["away_poss"]) * 200      # points per 100 possessions
     g["a_ortg"] = g["away_pts"] / (g["home_poss"] + g["away_poss"]) * 200
     return g
@@ -143,7 +144,7 @@ def history_table(g):
         for r in day.itertuples():
             f = eng.features(r.home, r.away, date)
             f.update(game_id=r.game_id, season=int(r.season), date=date, home=r.home, away=r.away,
-                     margin=r.home_pts - r.away_pts, total=r.home_pts + r.away_pts,
+                     margin=r.home_pts - r.away_pts, total=r.home_pts + r.away_pts, poss_raw=r.poss_raw, ortg_sum=r.h_ortg + r.a_ortg,
                      games_played=eng._team(r.home)["w"] + eng._team(r.away)["w"])
             rows.append(f)
         eng.update(day)
