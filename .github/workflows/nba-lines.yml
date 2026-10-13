@@ -1,0 +1,50 @@
+name: nba-line-snapshot
+
+# Saves NBA spreads and totals (consensus, DraftKings, best price) three times a day so you build your own line history.
+# 2 Odds API credits per run, about 180 a month. Times are UTC for daylight time (10am, 4pm and 7:30pm ET); after the clocks
+# change in November they land one hour earlier in local time, which is fine.
+on:
+  schedule:
+    - cron: "0 14 * * *"
+    - cron: "0 20 * * *"
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nba-line-snapshot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: pip install pandas numpy requests
+
+      - name: Capture NBA lines
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python nba_line_snapshot.py
+
+      - name: Commit
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add boards/nba_lines.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "nba lines $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
