@@ -1,0 +1,9 @@
+slot,basis,subset,edge_at_least,games,bets,win_rate,win_se,roi_at_110,avg_clv_pts,moved_toward_pct
+Mon,consensus,all games,0,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,all games,1,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,all games,2,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,all games,3,0,0,,,,,
+Mon,consensus,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,no QB CHECK/override,3,0,0,,,,,
