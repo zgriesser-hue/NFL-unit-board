@@ -349,6 +349,47 @@ def wind_check(d, X):
     print(pd.DataFrame(rows).round(3).to_string(index=False))
 
 
+def signal_map(r, d, Xmon, col="model_mon", min_edge=1.0):
+    """Where does the as-of-Monday model beat the OPENING total? Splits the games it disagrees with by side, edge size, QB
+    situation, roof, line level, time of year, division and season. Many splits means some look good by luck:
+    trust a pocket only if it has 100+ games, a clear interval above 52.4%, and the same sign in all three seasons."""
+    x = r[r["mkt_total_open"].notna() & r[col].notna()].copy()
+    x["edge"] = x[col] - x["mkt_total_open"]
+    x = x[(x["edge"].abs() >= min_edge) & (x["total_pts"] != x["mkt_total_open"])]       # pushes excluded
+    if len(x) < 100:
+        return None
+    di = d.set_index("game_id")
+    x["roof"] = x["game_id"].map(di["roof"])
+    x["div"] = x["game_id"].map(di["div"]).astype(float)
+    sw = pd.Series(Xmon["qb_swap"].values, index=d["game_id"].values)
+    x["qb_swap_abs"] = x["game_id"].map(sw).abs()
+    x["side"] = np.where(x["edge"] > 0, "Over", "Under")
+    x["won"] = ((x["edge"] > 0) & (x["total_pts"] > x["mkt_total_open"])) | ((x["edge"] < 0) & (x["total_pts"] < x["mkt_total_open"]))
+    x["move_toward"] = (x["mkt_total_close"] - x["mkt_total_open"]) * np.sign(x["edge"])
+    q75 = x["qb_swap_abs"].quantile(0.75)
+    splits = {
+        "all games": pd.Series("all", index=x.index),
+        "side": x["side"],
+        "edge size": pd.cut(x["edge"].abs(), [0, 2, 3, 100], labels=["1-2", "2-3", "3+"]),
+        "QB situation": np.where(x["qb_swap_abs"] >= max(q75, 1e-9), "starter differs from rating base", "same QBs as rating base"),
+        "roof": np.where(x["roof"].isin(["dome", "closed"]), "dome", "outdoors"),
+        "opening total": pd.cut(x["mkt_total_open"], [0, 41.5, 45.5, 49.5, 100], labels=["<42", "42-45.5", "46-49.5", "50+"]),
+        "time of year": pd.cut(x["week"], [0, 4, 12, 30], labels=["wk 1-4", "wk 5-12", "wk 13+"]),
+        "division game": np.where(x["div"] == 1, "division", "non-division"),
+        "season": x["season"].astype(str),
+    }
+    rows = []
+    for name, grp in splits.items():
+        for lab, g in x.groupby(pd.Series(grp, index=x.index), observed=True):
+            n = len(g)
+            p = float(g["won"].mean())
+            rows.append({"split": name, "group": str(lab), "games": n, "win_pct": p,
+                         "plus_minus_95": 1.96 * np.sqrt(p * (1 - p) / n), "roi_at_-110": p * (100 / 110) - (1 - p),
+                         "line_moved_toward_pct": float((g["move_toward"] > 0).sum() / max((g["move_toward"] != 0).sum(), 1)),
+                         "avg_pts_toward_model": float(g["move_toward"].mean())})
+    return pd.DataFrame(rows)
+
+
 def over_under_record(edge, actual, line, thresholds=BET_EDGES):
     rows = []
     for t in thresholds:
@@ -585,6 +626,12 @@ def main():
                 print("  betting the OPENING total on the model's side (need > 52.4% at -110), and how the line then moved:")
                 print(nrec.round(3).to_string(index=False))
                 nrec.to_csv(f"{BOARD_DIR}/totals_open_line_record_monday_latest.csv", index=False)
+                sm = signal_map(r, d, Xmon)
+                if sm is not None:
+                    print("\nSIGNAL MAP: as-of-Monday model vs the OPENING total, games where it disagrees by 1+ point (need > 52.4% at -110; "
+                          "many splits, so only trust 100+ games with the same result in all seasons):")
+                    print(sm.round(3).to_string(index=False))
+                    sm.to_csv(f"{BOARD_DIR}/totals_signal_map_latest.csv", index=False)
             # market-residual model (learns only what the opening total misses), same honest as-of-Monday inputs
             allrec = []
             for a in RESID_ALPHAS:
