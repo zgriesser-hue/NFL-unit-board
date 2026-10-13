@@ -1,0 +1,49 @@
+name: nba-model
+
+# Downloads NBA game logs (free, nba_api), runs the walk-forward backtest, and builds the board against the saved lines.
+# Run it by hand first (Actions > nba-model > Run workflow). During the season it also runs each morning ET.
+on:
+  schedule:
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nba-model
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn requests nba_api
+
+      - name: Download NBA game logs
+        run: python nba_fetch_games.py
+        continue-on-error: true      # stats.nba.com can refuse cloud servers; the saved file is used if so
+
+      - name: Run the NBA model
+        run: python nba_model_pipeline.py
+
+      - name: Commit results
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add data/nba_games.csv boards/nba_board_latest.csv boards/nba_backtest_latest.csv boards/nba_model_weights_latest.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "nba model $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1

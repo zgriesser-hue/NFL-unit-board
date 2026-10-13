@@ -1,4 +1,6 @@
 data/*
 !data/game_lines.csv
 !data/.gitkeep
+!data/nba_games.csv
+!data/nba_lines_hist.csv
 __pycache__/
