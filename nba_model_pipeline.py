@@ -168,15 +168,30 @@ def win_record(edge, actual_vs_line, thresholds):
     return pd.DataFrame(rows)
 
 
+def seasons_with_lines(d):
+    """Seasons where data/nba_lines_hist.csv covers most games (so the backtest can be graded against the market)."""
+    path = f"{DATA}/nba_lines_hist.csv"
+    if not os.path.exists(path):
+        return None
+    h = pd.read_csv(path)
+    h["date"] = pd.to_datetime(h["date"])
+    m = d[["season", "date", "home", "away"]].merge(h[["date", "home", "away"]].drop_duplicates(), on=["date", "home", "away"], how="inner")
+    cnt = m.groupby("season").size()
+    return {int(s) for s, n in cnt.items() if n >= 900}
+
+
 def backtest(d):
     seasons = sorted(d["season"].unique())
     full = [s for s in seasons if (d["season"] == s).sum() >= 1100]
+    have = seasons_with_lines(d)
+    if have:                                                    # test on seasons the saved lines cover, so the market comparison works
+        full = [s for s in full if s in have]
     test = [int(s) for s in full if s >= seasons[0] + 2][-N_TEST:]                   # first seasons are only warm-up for the ratings
     out = []
     for s in test:
         tr = (d["season"] < s) & (d["season"] > seasons[0])                      # skip the very first season (ratings still cold)
         te = d["season"] == s
-        if tr.sum() < 1500:
+        if tr.sum() < 1000:
             continue
         t = d[te][["game_id", "season", "date", "home", "away", "margin", "total", "games_played"]].copy()
         for tgt in ("margin", "total"):
