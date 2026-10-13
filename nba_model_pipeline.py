@@ -169,7 +169,7 @@ def win_record(edge, actual_vs_line, thresholds):
 
 
 def seasons_with_lines(d):
-    """Seasons where data/nba_lines_hist.csv covers most games (so the backtest can be graded against the market)."""
+    """Seasons where data/nba_lines_hist.csv covers a good share of games (so the backtest can be graded against the market)."""
     path = f"{DATA}/nba_lines_hist.csv"
     if not os.path.exists(path):
         return None
@@ -177,7 +177,7 @@ def seasons_with_lines(d):
     h["date"] = pd.to_datetime(h["date"])
     m = d[["season", "date", "home", "away"]].merge(h[["date", "home", "away"]].drop_duplicates(), on=["date", "home", "away"], how="inner")
     cnt = m.groupby("season").size()
-    return {int(s) for s, n in cnt.items() if n >= 900}
+    return {int(s) for s, n in cnt.items() if n >= 500}
 
 
 def backtest(d):
