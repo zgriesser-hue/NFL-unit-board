@@ -30,6 +30,23 @@ N_TEST = int(os.environ.get("NBA_TEST_SEASONS", "3"))
 FEATS = ["off_h", "def_h", "off_a", "def_a", "pace_h", "pace_a", "rest_h", "rest_a", "b2b_h", "b2b_a", "lg_ortg", "lg_pace"]
 FEATS_T = [f for f in FEATS if f not in ("lg_ortg", "lg_pace")]       # the total model works relative to the league's scoring level
 AVAIL = ["avail_h", "avail_a"]
+TRAVEL = ["trav_h", "trav_a", "east_a", "road_a", "stand_h", "alt_h"]      # travel and venue features (tested in nba_total_tune.py; not in the live model yet)
+# arena latitude, longitude, hours behind Eastern time, altitude in thousands of feet
+ARENA = {"ATL": (33.76, -84.40, 0, 1.0), "BOS": (42.37, -71.06, 0, 0.0), "BKN": (40.68, -73.97, 0, 0.0), "CHA": (35.23, -80.84, 0, 0.7),
+         "CHI": (41.88, -87.67, 1, 0.6), "CLE": (41.50, -81.69, 0, 0.7), "DAL": (32.79, -96.81, 1, 0.4), "DEN": (39.75, -105.01, 2, 5.28),
+         "DET": (42.34, -83.06, 0, 0.6), "GSW": (37.77, -122.39, 3, 0.0), "HOU": (29.75, -95.36, 1, 0.0), "IND": (39.76, -86.16, 0, 0.7),
+         "LAC": (34.04, -118.27, 3, 0.1), "LAL": (34.04, -118.27, 3, 0.1), "MEM": (35.14, -90.05, 1, 0.3), "MIA": (25.78, -80.19, 0, 0.0),
+         "MIL": (43.04, -87.92, 1, 0.6), "MIN": (44.98, -93.28, 1, 0.8), "NOP": (29.95, -90.08, 1, 0.0), "NYK": (40.75, -73.99, 0, 0.0),
+         "OKC": (35.46, -97.52, 1, 1.2), "ORL": (28.54, -81.38, 0, 0.1), "PHI": (39.90, -75.17, 0, 0.0), "PHX": (33.45, -112.07, 2, 1.1),
+         "POR": (45.53, -122.67, 3, 0.1), "SAC": (38.58, -121.50, 3, 0.0), "SAS": (29.43, -98.44, 1, 0.7), "TOR": (43.64, -79.38, 0, 0.3),
+         "UTA": (40.77, -111.90, 2, 4.23), "WAS": (38.90, -77.02, 0, 0.0)}
+
+
+def miles(a, b):
+    """Straight-line distance between two arenas (great circle), in thousands of miles."""
+    (la1, lo1), (la2, lo2) = np.radians(ARENA[a][:2]), np.radians(ARENA[b][:2])
+    h = np.sin((la2 - la1) / 2) ** 2 + np.cos(la1) * np.cos(la2) * np.sin((lo2 - lo1) / 2) ** 2
+    return float(2 * 3958.8 * np.arcsin(np.sqrt(h))) / 1000.0
 P_DECAY = float(os.environ.get("NBA_P_DECAY", "0.97"))    # each older game counts this much less for a player
 P_SHRINK = float(os.environ.get("NBA_P_SHRINK", "400"))    # minutes' worth of weight on the league-average prior for a player's rate
 P_DELTA = float(os.environ.get("NBA_P_DELTA", "0.06"))     # unknown players are assumed this much below the league rate (bench level)
@@ -82,7 +99,7 @@ class Ratings:
     def _team(self, tm):
         if tm not in self.t:
             p = self.prior.get(tm, (0.0, 0.0, 0.0))
-            self.t[tm] = {"w": 0.0, "so": 0.0, "sd": 0.0, "sp": 0.0, "last": None, "p": p}
+            self.t[tm] = {"w": 0.0, "so": 0.0, "sd": 0.0, "sp": 0.0, "last": None, "p": p, "loc": None, "away_run": 0, "home_run": 0}
         return self.t[tm]
 
     def new_season(self, season):
@@ -106,6 +123,14 @@ class Ratings:
         oa, da, pa = self.get(away)
         rest = lambda tm: 5.0 if self._team(tm)["last"] is None else float(min((date - self._team(tm)["last"]).days, 5))
         rh, ra = rest(home), rest(away)
+        sh, sa = self._team(home), self._team(away)
+        trav = lambda s_: 0.0 if s_["loc"] is None else miles(s_["loc"], home)          # distance from the last game's arena to this one
+        return {"trav_h": trav(sh), "trav_a": trav(sa),
+                "east_a": float(ARENA[sa["loc"]][2] - ARENA[home][2]) if sa["loc"] else 0.0,   # hours of eastward body-clock shift for the visitor
+                "road_a": float(min(sa["away_run"], 6)), "stand_h": float(min(sh["home_run"], 6)), "alt_h": ARENA[home][3],
+                **self._base(home, away, oh, dh, ph, oa, da, pa, rh, ra)}
+
+    def _base(self, home, away, oh, dh, ph, oa, da, pa, rh, ra):
         return {"off_h": oh, "def_h": dh, "off_a": oa, "def_a": da, "pace_h": ph, "pace_a": pa, "rest_h": rh, "rest_a": ra,
                 "b2b_h": float(rh <= 1), "b2b_a": float(ra <= 1), "lg_ortg": self.lg["ortg"], "lg_pace": self.lg["pace"]}
 
@@ -127,6 +152,11 @@ class Ratings:
                 s["sd"] += allowed_rel - opp_off                       # allowed this much more than average, beyond the offense faced
                 s["sp"] += pace_rel
                 s["last"] = r.date
+                s["loc"] = r.home
+                if tm == r.home:
+                    s["home_run"], s["away_run"] = s["home_run"] + 1, 0
+                else:
+                    s["away_run"], s["home_run"] = s["away_run"] + 1, 0
             self.lg["w"] += 1.0
             self.lg["so"] += (r.h_ortg + r.a_ortg) / 2
             self.lg["sp"] += r.poss

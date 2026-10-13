@@ -1,42 +1,27 @@
-"""Tune and upgrade the NBA total model, then test it against the closing totals.
+"""Tune and upgrade the NBA total model, then test new information against the closing totals.
 
 Step 1  TUNE the rating settings (how much to trust last season, how fast old games fade, how much rating carries over, ridge strength)
         by walk-forward error on the actual totals of seasons that have NO closing lines in our file, so the seasons used to grade the
         model against the market never influence the settings.
-Step 2  TWO-PART MODEL: a total is possessions x points per possession. Predict each part, then multiply.
-Step 3  GRADE the old model, the tuned model, the two-part model and a blend on the seasons with closing lines (vs the market).
+Step 2  GRADE the old and the tuned model on the seasons with closing lines (vs the market).
+Step 3  NEW INFORMATION: add travel and venue features (miles since the last game, body-clock shift, road-trip length, altitude) and
+        a referee-crew scoring tendency, and see whether each one shrinks the gap to the market. Referees need data/nba_refs.csv
+        (from nba_fetch_refs.py); without it that part is skipped.
 Run:  python nba_total_tune.py     (needs data/nba_games.csv and data/nba_lines_hist.csv)
 """
-import itertools
 import os
 import sys
 import time
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import Ridge
 
 import nba_model_pipeline as P
 
 log = P.log
 BASE = {"K_PRIOR": P.K_PRIOR, "DECAY": P.DECAY, "CARRY": P.CARRY, "ALPHA": P.ALPHA}
-GRID = {"K_PRIOR": [4, 8, 12, 20, 30], "DECAY": [0.94, 0.96, 0.97, 0.98, 0.99], "CARRY": [0.4, 0.55, 0.7, 0.85], "ALPHA": [10, 30, 100, 300]}
-POSS_COLS = ["pace_h", "pace_a", "rest_h", "rest_a", "b2b_h", "b2b_a"]
-EFF_COLS = ["off_h", "def_h", "off_a", "def_a", "rest_h", "rest_a", "b2b_h", "b2b_a"]
-
-
-class TwoPart:
-    """total = possessions x (points per 100 possessions summed over both teams) / 100, each part predicted relative to the league."""
-
-    def fit(self, X, d):
-        self.mp = P.Ridged().fit(X[POSS_COLS], d["poss_raw"] - X["lg_pace"])
-        self.me = P.Ridged().fit(X[EFF_COLS], d["ortg_sum"] - 2 * X["lg_ortg"])
-        return self
-
-    def predict(self, X):
-        poss = self.mp.predict(X[POSS_COLS]) + X["lg_pace"]
-        eff = self.me.predict(X[EFF_COLS]) + 2 * X["lg_ortg"]
-        return poss * eff / 100.0
+GRID = {"K_PRIOR": [4, 8, 12, 20], "DECAY": [0.85, 0.88, 0.91, 0.94, 0.96], "CARRY": [0.0, 0.15, 0.3, 0.4, 0.55], "ALPHA": [3, 10, 30]}
+REF_K = 100.0          # games' worth of weight pulling a referee's tendency toward average
 
 
 def set_params(**kw):
@@ -50,7 +35,27 @@ def build(g, params):
     return d
 
 
-def walk(d, seasons, kind):
+def add_refs(d, refs):
+    """ref_tot: the crew's average scoring tendency (points above the league level, shrunk), using only games BEFORE each date."""
+    d = d.merge(refs, on="game_id", how="left").sort_values(["date", "game_id"]).reset_index(drop=True)
+    st, out = {}, np.zeros(len(d))
+    resid = (d["total"] - P.lg_total(d)).values
+    cols = d[["ref1", "ref2", "ref3"]].values
+    for _, idx in d.groupby("date", sort=True).indices.items():
+        for i in idx:
+            v = [st.get(r, (0.0, 0.0)) for r in cols[i] if isinstance(r, str)]
+            out[i] = np.mean([s / (n + REF_K) for n, s in v]) if v else 0.0
+        for i in idx:
+            for r in cols[i]:
+                if isinstance(r, str):
+                    n, s = st.get(r, (0.0, 0.0))
+                    st[r] = (n + 1.0, s + resid[i])
+    d["ref_tot"] = out
+    d["has_refs"] = d["ref1"].notna()
+    return d
+
+
+def walk(d, seasons, kind="one", cols=None):
     """Walk-forward predictions of the total for the given seasons; trained only on earlier seasons (skipping the very first)."""
     out = []
     first = d["season"].min()
@@ -59,10 +64,9 @@ def walk(d, seasons, kind):
         if tr.sum() < 1000 or te.sum() == 0:
             continue
         t = d[te][["game_id", "season", "date", "home", "away", "total"]].copy()
-        if kind == "one":
-            t["p"] = P.TotalRidge().fit(d.loc[tr, P.FEATS], d.loc[tr, "total"]).predict(d.loc[te, P.FEATS]).values
-        else:
-            t["p"] = TwoPart().fit(d.loc[tr], d.loc[tr]).predict(d.loc[te]).values
+        use = P.FEATS_T + list(cols or [])
+        keep = P.FEATS + [c for c in use if c not in P.FEATS]
+        t["p"] = P.TotalRidge(use).fit(d.loc[tr, keep], d.loc[tr, "total"]).predict(d.loc[te, keep]).values
         out.append(t)
     return pd.concat(out) if out else None
 
@@ -71,21 +75,25 @@ def mae(r):
     return float((r["p"] - r["total"]).abs().mean())
 
 
-def tune(g, seasons_val, kind):
+def tune(g, seasons_val):
     cur, best = dict(BASE), None
     t0 = time.time()
-    for rnd in (1,):                                     # one pass; a second pass changed nothing in testing
-        for k in GRID:
-            scores = {}
-            for v in GRID[k]:
-                p = {**cur, k: v}
-                r = walk(build(g, p), seasons_val, kind)
-                scores[v] = mae(r)
-            v = min(scores, key=scores.get)
-            cur[k] = v
-            best = scores[v]
-            log(f"  [{kind}] round {rnd} {k}: " + ", ".join(f"{a}={b:.3f}" for a, b in scores.items()) + f"  -> {v}   ({time.time() - t0:.0f}s)")
+    for k in GRID:
+        scores = {}
+        for v in GRID[k]:
+            scores[v] = mae(walk(build(g, {**cur, k: v}), seasons_val))
+        v = min(scores, key=scores.get)
+        cur[k], best = v, scores[v]
+        edge = " (EDGE OF THE RANGE TRIED)" if v in (GRID[k][0], GRID[k][-1]) else ""
+        log(f"  {k}: " + ", ".join(f"{a}={b:.3f}" for a, b in scores.items()) + f"  -> {v}{edge}   ({time.time() - t0:.0f}s)")
     return cur, best
+
+
+def grade(r, h):
+    m = r.merge(h, on=["date", "home", "away"], how="inner")
+    e = m["p"] - m["mkt"]
+    return m, {"games": len(m), "model_miss": mae(m), "market_miss": float((m["mkt"] - m["total"]).abs().mean()),
+               "corr_vs_market_miss": float(np.corrcoef(e, m["total"] - m["mkt"])[0, 1])}
 
 
 def main():
@@ -97,48 +105,73 @@ def main():
     d0 = build(g, BASE)
     seasons = sorted(d0["season"].unique())
     have = P.seasons_with_lines(d0) or set()
-    test_all = [s for s in seasons if s in have and (d0["season"] == s).sum() >= 1100]
-    test = [s for s in test_all if s >= seasons[0] + 2][-P.N_TEST:]
+    test = [s for s in seasons if s in have and (d0["season"] == s).sum() >= 1100 and s >= seasons[0] + 2][-P.N_TEST:]
     val = [s for s in seasons if s not in have and s >= seasons[0] + 2 and (d0["season"] == s).sum() >= 1100]
     log(f"{len(d0)} games; tuning on seasons without closing lines {[int(x) for x in val]}; grading against the market on {[int(x) for x in test]}")
     if not val or not test:
         log("Not enough seasons for a clean tune/test split.")
         return 1
 
-    log("\nSTEP 1/2: TUNING (mean miss on the actual total over the tuning seasons, lower is better)")
-    base_one = mae(walk(d0, val, "one"))
-    base_two = mae(walk(d0, val, "two"))
-    log(f"  starting point (K_PRIOR={BASE['K_PRIOR']}, DECAY={BASE['DECAY']}, CARRY={BASE['CARRY']}, ALPHA={BASE['ALPHA']}): one-part {base_one:.3f}, two-part {base_two:.3f}")
-    p_one, s_one = tune(g, val, "one")
-    p_two, s_two = tune(g, val, "two")
-    log(f"\n  tuned one-part {s_one:.3f} with {p_one}")
-    log(f"  tuned two-part {s_two:.3f} with {p_two}")
+    log("\nSTEP 1: TUNING (mean miss on the actual total over the tuning seasons, lower is better)")
+    log(f"  starting point {BASE}: {mae(walk(d0, val)):.3f}")
+    best, s_best = tune(g, val)
+    log(f"  tuned: {s_best:.3f} with {best}")
 
-    log("\nSTEP 3: GRADE against the closing totals (these seasons were never used for tuning)")
     h = pd.read_csv(hp)
     h["date"] = pd.to_datetime(h["date"])
     h = h[["date", "home", "away", "total"]].rename(columns={"total": "mkt"})
-    runs = {"old model (as before)": (BASE, "one"), "tuned one-part": (p_one, "one"), "tuned two-part": (p_two, "two")}
-    preds, rows = {}, []
-    for name, (p, kind) in runs.items():
-        r = walk(build(g, p), test, kind)
-        preds[name] = r.merge(h, on=["date", "home", "away"], how="inner")
-    names = list(runs)
-    a, b = preds["tuned one-part"], preds["tuned two-part"]
-    bl = a.merge(b[["game_id", "p"]], on="game_id", suffixes=("", "_2"))
-    bl["p"] = (bl["p"] + bl["p_2"]) / 2
-    preds["blend of tuned one + two"] = bl
-    for name, r in preds.items():
-        e = r["p"] - r["mkt"]
-        rows.append({"model": name, "games": len(r), "model_miss": mae(r), "market_miss": float((r["mkt"] - r["total"]).abs().mean()),
-                     "gap": mae(r) - float((r["mkt"] - r["total"]).abs().mean()),
-                     "corr_vs_market_miss": float(np.corrcoef(e, r["total"] - r["mkt"])[0, 1])})
-    log(pd.DataFrame(rows).round(3).to_string(index=False))
-    best = min(rows, key=lambda x: x["model_miss"])["model"]
-    r = preds[best]
-    log(f"\nBest: {best}. Win rate betting its side against the closing total (need > 52.4%):")
-    log(P.win_record(r["p"] - r["mkt"], r["total"] - r["mkt"], P.TOTAL_EDGES).round(3).to_string(index=False))
-    log("\nSettings to use:  one-part " + str(p_one) + "   two-part " + str(p_two))
+    log("\nSTEP 2: GRADE against the closing totals (these seasons were never used for tuning)")
+    _, a = grade(walk(d0, test), h)
+    d1 = build(g, best)
+    _, b = grade(walk(d1, test), h)
+    rows = [{"model": "old settings", **a}, {"model": "tuned settings", **b}]
+
+    log("\nSTEP 3: NEW INFORMATION on top of the tuned settings")
+    refs = None
+    rp = f"{P.DATA}/nba_refs.csv"
+    if os.path.exists(rp):
+        refs = pd.read_csv(rp, dtype={"game_id": str})
+        refs = refs[refs["ref1"].notna()]
+    dd = d1
+    variants = {"+ travel and venue": P.TRAVEL}
+    if refs is not None and len(refs) > 500:
+        dd = add_refs(d1, refs[["game_id", "ref1", "ref2", "ref3"]])
+        cov = dd[dd["season"].isin(test)]["has_refs"].mean()
+        log(f"  referee data covers {dd['has_refs'].mean():.0%} of all games and {cov:.0%} of the graded games")
+        variants["+ referee crew"] = ["ref_tot"]
+        variants["+ travel, venue and referees"] = P.TRAVEL + ["ref_tot"]
+    else:
+        log("  (no referee data yet: run nba_fetch_refs.py until it says complete, then re-run this)")
+    m1, _ = grade(walk(dd, test), h)
+    for name, cols in variants.items():
+        r = walk(dd, test, cols=cols)
+        m, s = grade(r, h)
+        rows.append({"model": name, **s})
+        if "referee" in name and refs is not None:
+            m = m.merge(dd[["game_id", "has_refs"]], on="game_id")
+            log(f"    ({name}: {int(m['has_refs'].sum())} of the graded games have a referee crew; the rest get a neutral value)")
+        variants[name] = (cols, r)
+    res = pd.DataFrame(rows)
+    res["gap"] = res["model_miss"] - res["market_miss"]
+    log(res[["model", "games", "model_miss", "market_miss", "gap", "corr_vs_market_miss"]].round(3).to_string(index=False))
+
+    # what the new features are worth, in plain numbers
+    allc = P.FEATS_T + P.TRAVEL + (["ref_tot"] if "ref_tot" in dd else [])
+    tr = dd["season"] > dd["season"].min()
+    mdl = P.TotalRidge(allc).fit(dd.loc[tr, P.FEATS + [c for c in allc if c not in P.FEATS]], dd.loc[tr, "total"])
+    sd = dd.loc[tr, allc].std()
+    log("\nWEIGHTS in a model with everything (points of total per 1 standard deviation of the feature; trained on all seasons):")
+    log(mdl.coef.reindex(P.TRAVEL + (["ref_tot"] if "ref_tot" in dd else [])).round(2).to_string())
+
+    best_name = min(rows, key=lambda x: x["model_miss"])["model"]
+    if best_name in variants and isinstance(variants[best_name], tuple):
+        _, r = variants[best_name]
+    else:
+        r = walk(d1, test)
+    m, _ = grade(r, h)
+    log(f"\nBest: {best_name}. Win rate betting its side against the closing total (need > 52.4%):")
+    log(P.win_record(m["p"] - m["mkt"], m["total"] - m["mkt"], P.TOTAL_EDGES).round(3).to_string(index=False))
+    log(f"\nSettings to use: {best}")
     return 0
 
 
