@@ -29,6 +29,10 @@ ALPHA = float(os.environ.get("NBA_ALPHA", "30"))
 N_TEST = int(os.environ.get("NBA_TEST_SEASONS", "3"))
 FEATS = ["off_h", "def_h", "off_a", "def_a", "pace_h", "pace_a", "rest_h", "rest_a", "b2b_h", "b2b_a", "lg_ortg", "lg_pace"]
 FEATS_T = [f for f in FEATS if f not in ("lg_ortg", "lg_pace")]       # the total model works relative to the league's scoring level
+AVAIL = ["avail_h", "avail_a"]
+P_DECAY = float(os.environ.get("NBA_P_DECAY", "0.97"))    # each older game counts this much less for a player
+P_SHRINK = float(os.environ.get("NBA_P_SHRINK", "400"))    # minutes' worth of weight on the league-average prior for a player's rate
+P_DELTA = float(os.environ.get("NBA_P_DELTA", "0.06"))     # unknown players are assumed this much below the league rate (bench level)
 SPREAD_EDGES, TOTAL_EDGES = [1.0, 2.0, 3.0], [2.0, 4.0, 6.0]
 
 NAMES = {"Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN", "Charlotte Hornets": "CHA", "Chicago Bulls": "CHI",
@@ -288,6 +292,107 @@ def total_diagnostic(d, test):
         log(pd.DataFrame(rows).round(3).to_string(index=False))
 
 
+# ------------------------------------------------------------------ availability (who played)
+def availability(players):
+    """Lineup strength for each team in each game, and how far it is from that team's usual lineup (all pregame information
+    about the players; WHO ACTUALLY PLAYED is known only after the fact, so this is a ceiling test, not a betting signal).
+
+    A player's value = (game score per minute, shrunk toward the league rate) - league rate. Lineup strength L = sum over the
+    players who played of expected minutes x value. avail = L - the team's recent average L (so a missing star is negative).
+    Returns a frame with game_id, team, L, avail."""
+    p = players[players["team"].isin(set(NAMES.values()))].copy()
+    p["date"] = pd.to_datetime(p["date"])
+    p = p.sort_values(["date", "gid"])
+    st = {}                      # player -> [decayed minutes, decayed game score, decayed games played, decayed minutes (played games)]
+    ref = {}                     # team -> [decayed sum of L, decayed count]
+    lg = [1.0, 1.0]              # league minutes and game score (all players, slowly decayed): league rate = lg[1] / lg[0]
+    out = []
+    for date, day in p.groupby("date", sort=True):
+        lg_rate = lg[1] / lg[0]
+        todo = []
+        for (gid, team), g in day.groupby(["gid", "team"], sort=False):
+            act = g[g["min"] > 0]
+            L = 0.0
+            for r in act.itertuples():
+                m, gs, n, _ = st.get(r.pid, (0.0, 0.0, 0.0, 0.0))
+                rate = (gs + P_SHRINK * (lg_rate - P_DELTA)) / (m + P_SHRINK)
+                exp_min = (m / n) if n > 0.5 else 10.0
+                L += exp_min * (rate - lg_rate)
+            num, den = ref.get(team, (0.0, 0.0))
+            out.append((gid, team, L, L - num / den if den > 0 else 0.0))
+            todo.append((team, L, act))
+        for team, L, act in todo:                                       # update only after the whole day is scored
+            num, den = ref.get(team, (0.0, 0.0))
+            ref[team] = (num * P_DECAY + L, den * P_DECAY + 1.0)
+            for r in act.itertuples():
+                m, gs, n, _ = st.get(r.pid, (0.0, 0.0, 0.0, 0.0))
+                st[r.pid] = (m * P_DECAY + r.min, gs * P_DECAY + r.gmsc, n * P_DECAY + 1.0, 0.0)
+                lg = [lg[0] * 0.99999 + r.min, lg[1] * 0.99999 + r.gmsc]
+    return pd.DataFrame(out, columns=["game_id", "team", "L", "avail"])
+
+
+def load_players():
+    for name, reader in (("nba_players.parquet", pd.read_parquet), ("nba_players.csv.gz", pd.read_csv)):
+        if os.path.exists(f"{DATA}/{name}"):
+            return reader(f"{DATA}/{name}", dtype={"gid": str, "pid": str}) if name.endswith("gz") else reader(f"{DATA}/{name}")
+    return None
+
+
+def add_availability(d, players):
+    a = availability(players).drop_duplicates(["game_id", "team"])
+    d = d.merge(a.rename(columns={"team": "home", "L": "L_h", "avail": "avail_h"}), on=["game_id", "home"], how="left")
+    d = d.merge(a.rename(columns={"team": "away", "L": "L_a", "avail": "avail_a"}), on=["game_id", "away"], how="left")
+    miss = d["avail_h"].isna() | d["avail_a"].isna()
+    log(f"availability computed for {int((~miss).sum())} of {len(d)} games ({int(miss.sum())} without player data count as average)")
+    d[AVAIL + ["L_h", "L_a"]] = d[AVAIL + ["L_h", "L_a"]].fillna(0.0)
+    return d
+
+
+def availability_test(d, test):
+    """The ceiling check: do the models improve if we know who played? Walk-forward, compared with the market where lines exist."""
+    path = f"{DATA}/nba_lines_hist.csv"
+    h = None
+    if os.path.exists(path):
+        h = pd.read_csv(path)
+        h["date"] = pd.to_datetime(h["date"])
+    F2, FT2 = FEATS + AVAIL, FEATS_T + AVAIL
+    rows = []
+    for s in test:
+        tr, te = (d["season"] < s) & (d["season"] > d["season"].min()), d["season"] == s
+        if tr.sum() < 1000:
+            continue
+        t = d[te][["date", "home", "away", "margin", "total"]].copy()
+        t["m0"] = Ridged().fit(d.loc[tr, FEATS], d.loc[tr, "margin"]).predict(d.loc[te, FEATS]).values
+        t["m1"] = Ridged().fit(d.loc[tr, F2], d.loc[tr, "margin"]).predict(d.loc[te, F2]).values
+        t["t0"] = TotalRidge().fit(d.loc[tr, FEATS], d.loc[tr, "total"]).predict(d.loc[te, FEATS]).values
+        t["t1"] = TotalRidge(FT2).fit(d.loc[tr, F2], d.loc[tr, "total"]).predict(d.loc[te, F2]).values
+        rows.append(t)
+    if not rows:
+        return
+    r = pd.concat(rows)
+    mae = lambda a, b: float((a - b).abs().mean())
+    log(f"\nAVAILABILITY CEILING TEST, {len(r)} games (the model is told who actually played, which Monday's board could not know):")
+    log(f"  margin miss: ratings only {mae(r['m0'], r['margin']):.3f} -> with availability {mae(r['m1'], r['margin']):.3f}")
+    log(f"  total miss:  ratings only {mae(r['t0'], r['total']):.3f} -> with availability {mae(r['t1'], r['total']):.3f}")
+    if h is not None:
+        m = r.merge(h[["date", "home", "away", "home_spread", "total"]].rename(columns={"total": "mkt_total"}), on=["date", "home", "away"])
+        if len(m) >= 300:
+            log(f"  against the closing lines ({len(m)} games): spread model {mae(m['m1'], m['margin']):.3f} vs market {mae(m['home_spread'], m['margin']):.3f}; "
+                f"total model {mae(m['t1'], m['total']):.3f} vs market {mae(m['mkt_total'], m['total']):.3f}")
+            se, te_ = m["m1"] - m["home_spread"], m["t1"] - m["mkt_total"]
+            log(f"  corr of (model - market) with the market's miss: spread {np.corrcoef(se, m['margin'] - m['home_spread'])[0, 1]:+.3f}, "
+                f"total {np.corrcoef(te_, m['total'] - m['mkt_total'])[0, 1]:+.3f}")
+            log("  spread win rate betting the availability model's side (need > 52.4%):")
+            log(win_record(se, m["margin"] - m["home_spread"], SPREAD_EDGES).round(3).to_string(index=False))
+            log("  total win rate:")
+            log(win_record(te_, m["total"] - m["mkt_total"], TOTAL_EDGES).round(3).to_string(index=False))
+    tr_all = d["season"] > d["season"].min()
+    mm = Ridged().fit(d.loc[tr_all, F2], d.loc[tr_all, "margin"])
+    tt = TotalRidge(FT2).fit(d.loc[tr_all, F2], d.loc[tr_all, "total"])
+    log("  weights for the availability terms (points per 1 SD): margin " + ", ".join(f"{k} {mm.coef[k]:+.2f}" for k in AVAIL)
+        + " | total " + ", ".join(f"{k} {tt.coef[k]:+.2f}" for k in AVAIL))
+
+
 # ------------------------------------------------------------------ board
 def build_board(eng, mdl_m, mdl_t):
     path = f"{BOARD}/nba_lines.csv"
@@ -340,6 +445,14 @@ def main():
     else:
         report(r, test)
         total_diagnostic(d, test)
+        try:
+            pl = load_players()
+            if pl is None:
+                log("\n(no data/nba_players.parquet: run nba_fetch_players.py to test player availability)")
+            else:
+                availability_test(add_availability(d, pl), test)
+        except Exception as e:
+            log(f"(availability test skipped: {str(e)[:200]})")
         os.makedirs(BOARD, exist_ok=True)
         r.to_csv(f"{BOARD}/nba_backtest_latest.csv", index=False)
     tr = d["season"] > d["season"].min()

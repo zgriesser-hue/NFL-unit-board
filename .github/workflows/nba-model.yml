@@ -32,6 +32,10 @@ jobs:
         run: python -u nba_fetch_games.py
         continue-on-error: true      # stats.nba.com is skipped if the files are not reachable; the saved file is used instead
 
+      - name: Download NBA player box scores
+        run: python -u nba_fetch_players.py
+        continue-on-error: true      # used only for the player-availability test; skipped if the files are not reachable
+
       - name: Run the NBA model
         run: python nba_model_pipeline.py
 
