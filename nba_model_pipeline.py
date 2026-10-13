@@ -28,6 +28,7 @@ CARRY = float(os.environ.get("NBA_CARRY", "0.7"))         # share of last season
 ALPHA = float(os.environ.get("NBA_ALPHA", "30"))
 N_TEST = int(os.environ.get("NBA_TEST_SEASONS", "3"))
 FEATS = ["off_h", "def_h", "off_a", "def_a", "pace_h", "pace_a", "rest_h", "rest_a", "b2b_h", "b2b_a", "lg_ortg", "lg_pace"]
+FEATS_T = [f for f in FEATS if f not in ("lg_ortg", "lg_pace")]       # the total model works relative to the league's scoring level
 SPREAD_EDGES, TOTAL_EDGES = [1.0, 2.0, 3.0], [2.0, 4.0, 6.0]
 
 NAMES = {"Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN", "Charlotte Hornets": "CHA", "Chicago Bulls": "CHI",
@@ -157,6 +158,25 @@ class Ridged:
         return pd.Series(self.m.predict(((X - self.mu) / self.sd).values), index=X.index)
 
 
+def lg_total(X):
+    """The league's expected total at this point (points per 100 possessions x possessions x 2 teams)."""
+    return X["lg_ortg"] * X["lg_pace"] / 50.0
+
+
+class TotalRidge(Ridged):
+    """Predicts how far a game's total sits from the league's scoring level, so a season with a new scoring level
+    (a pandemic year, a rule change) does not throw the model off. Fit and predict take the full FEATS frame."""
+
+    def __init__(self, cols=None):
+        self.cols = cols or FEATS_T
+
+    def fit(self, X, y):
+        return super().fit(X[self.cols], y - lg_total(X))
+
+    def predict(self, X):
+        return super().predict(X[self.cols]) + lg_total(X)
+
+
 def win_record(edge, actual_vs_line, thresholds):
     """edge > 0 = model says the side that wins when actual_vs_line > 0. Pushes dropped."""
     rows = []
@@ -194,8 +214,9 @@ def backtest(d):
         if tr.sum() < 1000:
             continue
         t = d[te][["game_id", "season", "date", "home", "away", "margin", "total", "games_played"]].copy()
+        t["p_margin"] = Ridged().fit(d.loc[tr, FEATS], d.loc[tr, "margin"]).predict(d.loc[te, FEATS]).values
+        t["p_total"] = TotalRidge().fit(d.loc[tr, FEATS], d.loc[tr, "total"]).predict(d.loc[te, FEATS]).values
         for tgt in ("margin", "total"):
-            t[f"p_{tgt}"] = Ridged().fit(d.loc[tr, FEATS], d.loc[tr, tgt]).predict(d.loc[te, FEATS]).values
             t[f"base_{tgt}"] = float(d.loc[tr, tgt].mean())
         out.append(t)
     return (pd.concat(out) if out else None), test
@@ -232,6 +253,39 @@ def report(r, test):
     log(win_record(se, m["margin"] - m["home_spread"], SPREAD_EDGES).round(3).to_string(index=False))
     log("  total: win rate betting the model's side (Over/Under) against the closing total:")
     log(win_record(te_, m["total"] - m["mkt_total"], TOTAL_EDGES).round(3).to_string(index=False))
+
+
+def total_diagnostic(d, test):
+    """Why is the total model off? Re-run the walk-forward test with different feature sets and compare with the market."""
+    path = f"{DATA}/nba_lines_hist.csv"
+    if not os.path.exists(path) or not test:
+        return
+    h = pd.read_csv(path)
+    h["date"] = pd.to_datetime(h["date"])
+    variants = {"all features, raw total (the old way)": ("raw", FEATS),
+                "league-relative total (current)": ("rel", FEATS_T),
+                "  ...without pace": ("rel", [f for f in FEATS_T if not f.startswith("pace")]),
+                "  ...without pace or rest": ("rel", [f for f in FEATS_T if not f.startswith(("pace", "rest", "b2b"))]),
+                "  ...offense and defense only": ("rel", ["off_h", "def_h", "off_a", "def_a"])}
+    rows = []
+    for name, (kind, cols) in variants.items():
+        out = []
+        for s in test:
+            tr, te = (d["season"] < s) & (d["season"] > d["season"].min()), d["season"] == s
+            if tr.sum() < 1000:
+                continue
+            t = d[te][["date", "home", "away", "total"]].copy()
+            m = Ridged().fit(d.loc[tr, cols], d.loc[tr, "total"]) if kind == "raw" else TotalRidge(cols).fit(d.loc[tr, FEATS], d.loc[tr, "total"])
+            t["p"] = m.predict(d.loc[te, cols] if kind == "raw" else d.loc[te, FEATS]).values
+            t["base"] = float(d.loc[tr, "total"].mean())
+            out.append(t)
+        if out:
+            r = pd.concat(out).merge(h[["date", "home", "away", "total"]].rename(columns={"total": "mkt"}), on=["date", "home", "away"])
+            rows.append({"total model": name, "games": len(r), "model_miss": float((r["p"] - r["total"]).abs().mean()),
+                         "market_miss": float((r["mkt"] - r["total"]).abs().mean()), "league_avg_miss": float((r["base"] - r["total"]).abs().mean())})
+    if rows:
+        log("\nTOTAL MODEL DIAGNOSTIC (mean miss on games with closing totals; the market is the number to beat):")
+        log(pd.DataFrame(rows).round(3).to_string(index=False))
 
 
 # ------------------------------------------------------------------ board
@@ -285,14 +339,15 @@ def main():
         log("Not enough history for the walk-forward test (need 3+ full seasons).")
     else:
         report(r, test)
+        total_diagnostic(d, test)
         os.makedirs(BOARD, exist_ok=True)
         r.to_csv(f"{BOARD}/nba_backtest_latest.csv", index=False)
     tr = d["season"] > d["season"].min()
-    mdl_m, mdl_t = Ridged().fit(d.loc[tr, FEATS], d.loc[tr, "margin"]), Ridged().fit(d.loc[tr, FEATS], d.loc[tr, "total"])
-    pd.DataFrame({"margin_coef": mdl_m.coef, "total_coef": mdl_t.coef}).rename_axis("feature").reset_index().to_csv(
+    mdl_m, mdl_t = Ridged().fit(d.loc[tr, FEATS], d.loc[tr, "margin"]), TotalRidge().fit(d.loc[tr, FEATS], d.loc[tr, "total"])
+    pd.DataFrame({"margin_coef": mdl_m.coef, "total_coef": mdl_t.coef.reindex(FEATS)}).rename_axis("feature").reset_index().to_csv(
         f"{BOARD}/nba_model_weights_latest.csv", index=False)
     log("\nMODEL WEIGHTS (points per 1 standard deviation of the feature):")
-    log(pd.DataFrame({"margin": mdl_m.coef, "total": mdl_t.coef}).round(2).to_string())
+    log(pd.DataFrame({"margin": mdl_m.coef, "total (vs league level)": mdl_t.coef.reindex(FEATS)}).round(2).to_string())
     build_board(eng, mdl_m, mdl_t)
     return 0
 
