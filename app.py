@@ -70,8 +70,8 @@ if not boards:
     st.info("No boards yet. Run the workflow from the Actions tab.")
     st.stop()
 
-tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_wi, tab_fwd, tab_bets, tab_tot = st.tabs(
-    ["This week", "Game", "Teams", "QBs", "Schemes", "What-if", "Forward test", "Bets", "Totals"])
+tab_week, tab_game, tab_teams, tab_qb, tab_sch, tab_wi, tab_fwd, tab_bets, tab_tot, tab_cfb = st.tabs(
+    ["This week", "Game", "Teams", "QBs", "Schemes", "What-if", "Forward test", "Bets", "Totals", "College"])
 
 # ---------------------------------------------------------------- This week
 with tab_week:
@@ -749,3 +749,48 @@ with tab_tot:
                        "CLV is how many points the line moved toward the model's side by close; positive means you beat the closing number. "
                        "Small samples swing a lot, so give it a month or two.")
 
+
+
+# ---------------------------------------------------------------- College football
+def _rec(df, edge, res, thr):
+    out = []
+    for t in thr:
+        m = (edge.abs() >= t) & (res != 0)
+        w = int(((np.sign(edge[m]) * res[m]) > 0).sum())
+        n = int(m.sum())
+        out.append({"Edge at least": t, "Bets": n, "Won": w, "Lost": n - w, "Win %": round(w / n, 3) if n else None})
+    return pd.DataFrame(out)
+
+
+with tab_cfb:
+    cb = load_csv("boards/cfb_board_latest.csv")
+    cg = load_csv("boards/cfb_board_graded_latest.csv")
+    st.caption("College football projections. Positive = home team favored. Backtests show the model does not beat the closing line, "
+               "so use this to see where it disagrees with the market, not as a list of bets. Totals leave out weather for upcoming games.")
+    if cb is None or cb.empty:
+        st.info("No college board yet. Run the cfb-board workflow from the Actions tab.")
+    else:
+        st.subheader("Upcoming games")
+        kind = st.radio("Show", ["Spreads", "Totals"], horizontal=True, key="cfb_kind")
+        if kind == "Spreads":
+            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line (home by)": cb["line_home_by"], "Model": cb["proj_home_by"],
+                              "Edge": cb["spread_edge"], "Lean": cb["spread_pick"], "Type": cb["type"]})
+        else:
+            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line": cb["line_total"], "Model": cb["proj_total"],
+                              "Edge": cb["total_edge"], "Lean": cb["total_pick"], "Type": cb["type"]})
+        v = v.dropna(subset=["Edge"])
+        v = v.reindex(v["Edge"].abs().sort_values(ascending=False).index)
+        st.dataframe(v, hide_index=True, use_container_width=True)
+        st.caption("Edge = model minus line. Lines for later games are early numbers and still move.")
+    if cg is not None and not cg.empty:
+        st.subheader("How it is doing this season")
+        st.caption(f"{len(cg)} games, weeks {int(cg['week'].min())}-{int(cg['week'].max())}. Each game was projected using only earlier information. "
+                   "About 52.4% wins is break-even at -110.")
+        which = st.radio("Number", ["Closing line", "Opening line"], horizontal=True, key="cfb_basis")
+        sfx = "close" if which == "Closing line" else "open"
+        d = cg.dropna(subset=[f"spread_{sfx}"])
+        st.markdown(f"**Spreads** (model miss {(d['margin'] - d['proj_margin']).abs().mean():.2f} pts, line miss {(d['margin'] - d[f'spread_{sfx}']).abs().mean():.2f})")
+        st.dataframe(_rec(d, d["proj_margin"] - d[f"spread_{sfx}"], d["margin"] - d[f"spread_{sfx}"], [1, 2, 3, 4]), hide_index=True, use_container_width=True)
+        d = cg.dropna(subset=[f"total_{sfx}", "proj_total"])
+        st.markdown(f"**Totals** (model miss {(d['total'] - d['proj_total']).abs().mean():.2f} pts, line miss {(d['total'] - d[f'total_{sfx}']).abs().mean():.2f})")
+        st.dataframe(_rec(d, d["proj_total"] - d[f"total_{sfx}"], d["total"] - d[f"total_{sfx}"], [2, 3, 4, 6]), hide_index=True, use_container_width=True)
