@@ -57,6 +57,7 @@ def main():
             rows += [(x, 1, np.nan, np.nan, np.nan) for x in grp["game_id"]]
         else:
             jobs.append(grp)
+    jobs.sort(key=lambda j: -int(j.iloc[0]["season"]))  # newest seasons first, so a partial run covers whole recent seasons
     log(f"{len(jobs)} weather requests to make ({len(rows)} indoor games need none)")
 
     def work(grp):
