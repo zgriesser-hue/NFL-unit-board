@@ -70,6 +70,17 @@ def main():
     trm = dm[(dm["season"] < cur) & (dm["season"] > dm["season"].min())]
     trt = dt[(dt["season"] < cur) & (dt["season"] > dt["season"].min())]
     mm, mt = P.Model(cols_m, PM["ALPHA"], False).fit(trm), P.Model(cols_t, PT["ALPHA"], True).fit(trt)
+    def note(tm):
+        t = em._team(tm)
+        cur, pri = em.get(tm), t["p"]
+        shift = (cur[0] - cur[1]) - (pri[0] - pri[1])     # points per game: this season's rating minus last season's carried rating
+        bits = []
+        if t["w"] < 4:
+            bits.append(f"{tm}: only {t['w']:.0f} games")
+        if abs(shift) >= 6:
+            bits.append(f"{tm}: rating {'up' if shift > 0 else 'down'} {abs(shift):.0f} vs last year")
+        return "; ".join(bits)
+
     rows = []
     for r in up.itertuples():
         fm, ft = em.features(r.home, r.away, r.date, r.neutral), et.features(r.home, r.away, r.date, r.neutral)
@@ -79,15 +90,18 @@ def main():
         rows.append({"week": r.week, "date": r.date.date(), "matchup": f"{r.away} at {r.home}", "type": r.matchup,
                      "line_home_by": sp, "proj_home_by": round(pm, 1),
                      "spread_edge": round(pm - sp, 1) if pd.notna(sp) else np.nan,
+                     "spread_blend_edge": round((pm - sp) / 2, 1) if pd.notna(sp) else np.nan,
                      "spread_pick": ("" if pd.isna(sp) else (f"{r.home}" if pm > sp else f"{r.away}")),
                      "line_total": tl, "proj_total": round(pt, 1), "total_edge": round(pt - tl, 1) if pd.notna(tl) else np.nan,
+                     "total_blend_edge": round((pt - tl) / 2, 1) if pd.notna(tl) else np.nan,
+                     "caution": "; ".join(x for x in (note(r.home), note(r.away)) if x),
                      "total_pick": ("" if pd.isna(tl) else ("Over" if pt > tl else "Under"))})
     b = pd.DataFrame(rows).sort_values(["date", "matchup"])
     b.to_csv(f"{P.BOARD}/cfb_board_latest.csv", index=False)
     log(f"\nBOARD: {len(b)} upcoming games with lines (lines are the latest available, sign: positive = home favored)")
     show = b.assign(se=b["spread_edge"].abs(), te=b["total_edge"].abs())
-    log("\nBiggest TOTAL edges:\n" + show.sort_values("te", ascending=False).head(8)[["date", "matchup", "line_total", "proj_total", "total_pick"]].to_string(index=False))
-    log("\nBiggest SPREAD edges:\n" + show.sort_values("se", ascending=False).head(8)[["date", "matchup", "line_home_by", "proj_home_by", "spread_pick"]].to_string(index=False))
+    log("\nBiggest TOTAL edges:\n" + show.sort_values("te", ascending=False).head(8)[["date", "matchup", "line_total", "proj_total", "total_pick", "caution"]].to_string(index=False))
+    log("\nBiggest SPREAD edges:\n" + show.sort_values("se", ascending=False).head(8)[["date", "matchup", "line_home_by", "proj_home_by", "spread_pick", "caution"]].to_string(index=False))
     return 0
 
 

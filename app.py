@@ -774,14 +774,16 @@ with tab_cfb:
         kind = st.radio("Show", ["Spreads", "Totals"], horizontal=True, key="cfb_kind")
         if kind == "Spreads":
             v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line (home by)": cb["line_home_by"], "Model": cb["proj_home_by"],
-                              "Edge": cb["spread_edge"], "Lean": cb["spread_pick"], "Type": cb["type"]})
+                              "Edge": cb["spread_edge"], "Half edge": cb["spread_blend_edge"], "Lean": cb["spread_pick"], "Watch": cb["caution"].fillna("")})
         else:
             v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line": cb["line_total"], "Model": cb["proj_total"],
-                              "Edge": cb["total_edge"], "Lean": cb["total_pick"], "Type": cb["type"]})
+                              "Edge": cb["total_edge"], "Half edge": cb["total_blend_edge"], "Lean": cb["total_pick"], "Watch": cb["caution"].fillna("")})
         v = v.dropna(subset=["Edge"])
         v = v.reindex(v["Edge"].abs().sort_values(ascending=False).index)
         st.dataframe(v, hide_index=True, use_container_width=True)
-        st.caption("Edge = model minus line. Lines for later games are early numbers and still move.")
+        st.caption("Edge = model minus line. Half edge = the edge if you split the difference between the model and the market, a more cautious read. "
+                   "Watch = a team with few games this season or a rating far from last year's, where the model is least reliable. "
+                   "Lines for later games are early numbers and still move.")
     if cg is not None and not cg.empty:
         st.subheader("How it is doing this season")
         st.caption(f"{len(cg)} games, weeks {int(cg['week'].min())}-{int(cg['week'].max())}. Each game was projected using only earlier information. "
