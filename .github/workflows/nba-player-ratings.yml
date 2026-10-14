@@ -1,0 +1,28 @@
+name: nba-player-ratings
+
+# Second availability test: player ratings from a ridge regression on minutes (adjusted plus-minus), instead of the crude game-score rating.
+# Takes roughly 10-20 minutes. Run by hand: Actions > nba-player-ratings > Run workflow. Needs no API key.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn scipy requests pyarrow
+      - name: Download NBA box scores
+        run: python -u nba_fetch_games.py
+        continue-on-error: true
+      - name: Download NBA player box scores
+        run: python -u nba_fetch_players.py
+      - name: Run the player-ratings test
+        run: python -u nba_player_ratings.py
