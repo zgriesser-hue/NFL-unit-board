@@ -85,7 +85,60 @@ def one_season(y):
                      "home": pick(x, "homeTeam", "home_team"), "away": pick(x, "awayTeam", "away_team"),
                      "home_pts": pick(x, "homePoints", "home_points"), "away_pts": pick(x, "awayPoints", "away_points"),
                      "home_class": pick(x, "homeClassification", "home_division"), "away_class": pick(x, "awayClassification", "away_division"),
+                     "home_conf": pick(x, "homeConference", "home_conference"), "away_conf": pick(x, "awayConference", "away_conference"),
+                     "venue_id": pick(x, "venueId", "venue_id"),
                      **L.get(gid, {})})
+    return pd.DataFrame(rows)
+
+
+STATS_OUT = os.path.join(HERE, "data", "cfb_stats.csv")
+VENUES_OUT = os.path.join(HERE, "data", "cfb_venues.csv")
+
+
+def flat(x, *path):
+    for k in path:
+        x = x.get(k) if isinstance(x, dict) else None
+        if x is None:
+            return np.nan
+    return x
+
+
+def season_stats(y):
+    """Game-level advanced team stats (plays, drives, expected points added per play, success rate) for one season."""
+    rows = []
+    for st in ("regular", "postseason"):
+        try:
+            data = get("/stats/game/advanced", year=y, seasonType=st)
+        except SystemExit:
+            data = []
+        if not data and st == "regular":                          # some versions need a week
+            for wk in range(1, 17):
+                try:
+                    data += get("/stats/game/advanced", year=y, week=wk, seasonType=st)
+                except SystemExit:
+                    break
+        for x in data:
+            o, d = x.get("offense") or {}, x.get("defense") or {}
+            rows.append({"game_id": pick(x, "gameId", "game_id", "id"), "team": x.get("team"), "season": y,
+                         "plays": o.get("plays"), "drives": o.get("drives"), "o_ppa": o.get("ppa"), "o_sr": o.get("successRate"),
+                         "o_expl": o.get("explosiveness"), "d_ppa": d.get("ppa"), "d_sr": d.get("successRate"), "d_expl": d.get("explosiveness")})
+    return pd.DataFrame(rows)
+
+
+def venues():
+    v = get("/venues")
+    if v:
+        log(f"  sample venue keys: {sorted(v[0].keys())}")
+    rows = []
+    for x in v:
+        loc = x.get("location") or {}
+        a, b = pick(x, "latitude", default=loc.get("y")), pick(x, "longitude", default=loc.get("x"))
+        if a is None or b is None:
+            continue
+        a, b = float(a), float(b)
+        lat, lon = (a, b) if abs(b) > abs(a) else (b, a)           # US latitudes are 24-50, longitudes 66-125 in size; sort out any mix-up
+        rows.append({"venue_id": x.get("id"), "venue": x.get("name"), "lat": lat, "lon": lon, "dome": bool(pick(x, "dome", default=False)),
+                     "elevation": pick(x, "elevation")})
     return pd.DataFrame(rows)
 
 
@@ -103,6 +156,17 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     out.to_csv(OUT, index=False)
     log(f"saved {len(out)} games to {OUT}")
+    v = venues()
+    v.to_csv(VENUES_OUT, index=False)
+    log(f"saved {len(v)} venues with coordinates ({int(v['dome'].sum())} domes)")
+    sp = []
+    for y in range(FIRST, current_season() + 1):
+        st = season_stats(y)
+        log(f"  {y}: {len(st)} team-game stat rows ({st['plays'].notna().sum() if len(st) else 0} with plays)")
+        sp.append(st)
+    st = pd.concat(sp, ignore_index=True)
+    st.to_csv(STATS_OUT, index=False)
+    log(f"saved {len(st)} team-game stat rows to {STATS_OUT}")
     return 0
 
 
