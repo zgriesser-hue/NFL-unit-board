@@ -773,15 +773,36 @@ with tab_cfb:
         st.subheader("Upcoming games")
         kind = st.radio("Show", ["Spreads", "Totals"], horizontal=True, key="cfb_kind")
         if kind == "Spreads":
-            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line (home by)": cb["line_home_by"], "Model": cb["proj_home_by"],
-                              "Edge": cb["spread_edge"], "Half edge": cb["spread_blend_edge"], "Lean": cb["spread_pick"], "Watch": cb["caution"].fillna("")})
+            def _side(matchup, x):      # "Houston -4.5" style: the favored team and by how much (pick'em if 0)
+                away, home = matchup.split(" at ", 1)
+                if pd.isna(x):
+                    return ""
+                return "Pick'em" if abs(x) < 0.05 else f"{home if x > 0 else away} -{abs(x):g}"
+
+            def _bet(row):              # the side the model likes, with the number you would bet it at
+                away, home = row["matchup"].split(" at ", 1)
+                x, pick = row["line_home_by"], row["spread_pick"]
+                if pd.isna(x) or not pick:
+                    return ""
+                n = -x if pick == home else x          # that team's number: negative = giving points
+                return f"{pick} {n:+g}" if abs(n) >= 0.05 else f"{pick} pick'em"
+
+            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"],
+                              "Model likes": cb.apply(_bet, axis=1),
+                              "Market": [_side(m, x) for m, x in zip(cb["matchup"], cb["line_home_by"])],
+                              "Model": [_side(m, x) for m, x in zip(cb["matchup"], cb["proj_home_by"])],
+                              "Edge": cb["spread_edge"].abs().round(1), "Half edge": (cb["spread_blend_edge"].abs()).round(1),
+                              "Watch": cb["caution"].fillna("")})
         else:
-            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"], "Line": cb["line_total"], "Model": cb["proj_total"],
-                              "Edge": cb["total_edge"], "Half edge": cb["total_blend_edge"], "Lean": cb["total_pick"], "Watch": cb["caution"].fillna("")})
+            v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"],
+                              "Model likes": [f"{p} {l:g}" if p and pd.notna(l) else "" for p, l in zip(cb["total_pick"], cb["line_total"])],
+                              "Market": cb["line_total"], "Model": cb["proj_total"],
+                              "Edge": cb["total_edge"].abs().round(1), "Half edge": cb["total_blend_edge"].abs().round(1),
+                              "Watch": cb["caution"].fillna("")})
         v = v.dropna(subset=["Edge"])
         v = v.reindex(v["Edge"].abs().sort_values(ascending=False).index)
         st.dataframe(v, hide_index=True, use_container_width=True)
-        st.caption("Edge = model minus line. Half edge = the edge if you split the difference between the model and the market, a more cautious read. "
+        st.caption("Model likes = the side the model would bet, at the market's number (for example 'Houston -4.75' means Houston giving 4.75 points; 'Oklahoma State +4.75' means getting them). Market and Model show the favorite and the margin each one expects. Edge = how many points the model and market disagree. Half edge = the edge if you split the difference between the model and the market, a more cautious read. "
                    "Watch = a team with few games this season or a rating far from last year's, where the model is least reliable. "
                    "Lines for later games are early numbers and still move.")
     if cg is not None and not cg.empty:
