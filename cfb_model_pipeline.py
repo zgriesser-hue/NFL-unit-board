@@ -20,9 +20,11 @@ DATA, BOARD = f"{ROOT}/data", f"{ROOT}/boards"
 HFA = 1.2                                    # points each side's score is nudged for home field, so ratings are not biased by who hosted
 N_TEST = int(os.environ.get("CFB_TEST_SEASONS", "3"))
 DEFAULT = {"K_PRIOR": 6.0, "DECAY": 0.95, "CARRY": 0.6, "ALPHA": 30.0}
-GRID = {"K_PRIOR": [2, 4, 8, 14], "DECAY": [0.8, 0.9, 0.95, 1.0], "CARRY": [0.2, 0.4, 0.6, 0.8], "ALPHA": [3, 30, 100, 300]}
+GRID = {"K_PRIOR": [2, 4, 8, 14, 24], "DECAY": [0.8, 0.9, 0.95, 1.0], "CARRY": [0.2, 0.4, 0.6, 0.8, 0.9, 1.0], "ALPHA": [3, 30, 100, 300]}
+CARRY_CHECK = [0.2, 0.4, 0.6, 0.8, 1.0]
 FEATS = ["off_h", "def_h", "off_a", "def_a", "rest_h", "rest_a", "neutral", "lg_pts"]
 FEATS_T = [f for f in FEATS if f != "lg_pts"]
+SEASONS_CHECK = []
 SPREAD_EDGES, TOTAL_EDGES = [1.0, 2.0, 3.0, 4.0], [2.0, 3.0, 4.0, 6.0]
 
 
@@ -170,6 +172,46 @@ def win_record(edge, vs_line, thresholds):
     return pd.DataFrame(rows)
 
 
+def grade(name, r, r0, tot):
+    cl, op, y = ("total_close", "total_open", "total") if tot else ("spread_close", "spread_open", "margin")
+    m = r[r[cl].notna()]
+    log(f"\n{name}: {len(m)} games with a closing line. Mean miss: " + (f"default settings {mae(r0.loc[m.index], tot):.3f} | " if r0 is not None else "")
+        + f"tuned {mae(m, tot):.3f} | closing line {float((m[cl] - m[y]).abs().mean()):.3f}"
+        + (f" | opening line {float((m[op] - m[y]).abs().mean()):.3f}" if m[op].notna().any() else "")
+        + f" | 50/50 blend with the close {float((0.5 * m['p'] + 0.5 * m[cl] - m[y]).abs().mean()):.3f}")
+    e = m["p"] - m[cl]
+    log(f"  corr of (model - closing line) with the line's miss: {np.corrcoef(e, m[y] - m[cl])[0, 1]:+.3f}   (0 = nothing beyond the line)")
+    log("  win rate betting the model's side against the CLOSING line (need > 52.4%):")
+    log(win_record(e, m[y] - m[cl], TOTAL_EDGES if tot else SPREAD_EDGES).round(3).to_string(index=False))
+    mo = m[m[op].notna()]
+    if len(mo) > 100:
+        log(f"  against the OPENING line ({len(mo)} games):")
+        log(win_record(mo["p"] - mo[op], mo[y] - mo[op], TOTAL_EDGES if tot else SPREAD_EDGES).round(3).to_string(index=False))
+
+
+def carry_by_season(g, p_m, p_t):
+    """Do teams keep their ratings in recent years (transfer portal, NIL)?  For each season, the miss when last season's rating is kept at
+    different strengths (CARRY; 1.0 = keep it all, 0.2 = mostly start over). The best value per season shows whether it has been falling."""
+    log("\nDO RATINGS CARRY OVER, SEASON BY SEASON?  (mean miss in that season, lower is better; * = best carry-over for that season)")
+    for tot, p in ((False, p_m), (True, p_t)):
+        res = {}
+        for c in CARRY_CHECK:
+            pp = {**p, "CARRY": c}
+            r = walk(history(g, pp), SEASONS_CHECK, pp["ALPHA"], tot)
+            res[c] = r.groupby("season").apply(lambda x: mae(x, tot))
+        t = pd.DataFrame(res)
+        t.index = t.index.astype(int)
+        lines = []
+        for sn, row in t.iterrows():
+            b = row.idxmin()
+            lines.append(f"  {sn}: " + "  ".join(f"{c:.1f}={row[c]:.3f}{'*' if c == b else ' '}" for c in CARRY_CHECK))
+        log(f"  {'total' if tot else 'margin'} model, carry-over " + " ".join(f"{c:.1f}" for c in CARRY_CHECK))
+        log("\n".join(lines))
+        best = t.idxmin(axis=1)
+        early, late = best[best.index <= 2020], best[best.index >= 2021]
+        log(f"  best carry-over averaged: seasons up to 2020 {early.mean():.2f}, 2021 onward (portal and NIL era) {late.mean():.2f}")
+
+
 def main():
     path = f"{DATA}/cfb_games.csv"
     if not os.path.exists(path):
@@ -186,9 +228,11 @@ def main():
     for c in ("spread_close", "spread_open"):
         g[c] = g[c] * -sign                          # now: positive = home favored, same scale as a predicted margin
     d0 = history(g, DEFAULT)
+    global SEASONS_CHECK
     full = [int(s) for s in sorted(d0["season"].unique()) if (d0["season"] == s).sum() >= 600 and d0.loc[d0["season"] == s, "spread_close"].notna().mean() > 0.6]
     test = full[-N_TEST:]
     val = [s for s in full if s < test[0] and s >= int(d0["season"].min()) + 2]
+    SEASONS_CHECK = [int(x) for x in sorted(d0["season"].unique()) if x >= int(d0["season"].min()) + 2 and (d0["season"] == x).sum() >= 600]
     log(f"tuning on seasons {val}; grading on {test} (never used for tuning)")
     if not val or not test:
         log("Not enough seasons.")
@@ -203,21 +247,15 @@ def main():
     dm, dt = history(g, p_m), history(g, p_t)
     rm, rt = walk(dm, test, p_m["ALPHA"], False), walk(dt, test, p_t["ALPHA"], True)
     r0m, r0t = walk(d0, test, DEFAULT["ALPHA"], False), walk(d0, test, DEFAULT["ALPHA"], True)
-    for name, r, r0, tot, cl, op in (("SPREAD", rm, r0m, False, "spread_close", "spread_open"), ("TOTAL", rt, r0t, True, "total_close", "total_open")):
-        y = "total" if tot else "margin"
-        m = r[r[cl].notna()]
-        log(f"\n{name}: {len(m)} games with a closing line. Mean miss: default settings {mae(r0.loc[m.index], tot):.3f} | tuned {mae(m, tot):.3f} | "
-            f"closing line {float((m[cl] - m[y]).abs().mean()):.3f}"
-            + (f" | opening line {float((m[op] - m[y]).abs().mean()):.3f}" if m[op].notna().any() else "")
-            + f" | 50/50 blend with the close {float((0.5 * m['p'] + 0.5 * m[cl] - m[y]).abs().mean()):.3f}")
-        e = m["p"] - m[cl]
-        log(f"  corr of (model - closing line) with the line's miss: {np.corrcoef(e, m[y] - m[cl])[0, 1]:+.3f}   (0 = nothing beyond the line)")
-        log(f"  win rate betting the model's side against the CLOSING line (need > 52.4%):")
-        log(win_record(e, m[y] - m[cl], TOTAL_EDGES if tot else SPREAD_EDGES).round(3).to_string(index=False))
-        mo = m[m[op].notna()]
-        if len(mo) > 300:
-            log(f"  against the OPENING line ({len(mo)} games):")
-            log(win_record(mo["p"] - mo[op], mo[y] - mo[op], TOTAL_EDGES if tot else SPREAD_EDGES).round(3).to_string(index=False))
+    for name, r, r0, tot in (("SPREAD", rm, r0m, False), ("TOTAL", rt, r0t, True)):
+        grade(name, r, r0, tot)
+    carry_by_season(g, p_m, p_t)
+    cur = int(d0["season"].max())
+    if cur not in test:
+        for name, d_, p_, tot in (("SPREAD", dm, p_m, False), ("TOTAL", dt, p_t, True)):
+            r = walk(d_, [cur], p_["ALPHA"], tot)
+            if r is not None and r["total_close" if tot else "spread_close"].notna().sum() >= 100:
+                grade(f"{name}, {cur} SEASON SO FAR (completely out of sample)", r, None, tot)
     tr = dm[dm["season"] > dm["season"].min()]
     log("\nMODEL WEIGHTS (points per 1 standard deviation of the feature):")
     log(pd.DataFrame({"margin": Model(FEATS, p_m["ALPHA"], False).fit(tr).coef,
