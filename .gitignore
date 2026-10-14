@@ -4,5 +4,6 @@ data/*
 !data/nba_games.csv
 !data/nba_lines_hist.csv
 !data/nba_refs.csv
+!data/cfb_games.csv
 __pycache__/
 *.parquet

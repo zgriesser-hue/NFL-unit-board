@@ -1,0 +1,44 @@
+name: cfb-model
+
+# Downloads college football games and betting lines (CollegeFootballData.com, free key in the CFBD_API_KEY secret), then tunes and
+# backtests the spread and totals models against the market. Takes a few minutes. Run by hand: Actions > cfb-model > Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cfb-model
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn requests
+      - name: Download games and lines
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: python -u cfb_fetch.py
+      - name: Run the college football model
+        run: python -u cfb_model_pipeline.py
+      - name: Commit results
+        if: always()
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add data/cfb_games.csv boards/cfb_backtest_spread_latest.csv 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "cfb model $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
