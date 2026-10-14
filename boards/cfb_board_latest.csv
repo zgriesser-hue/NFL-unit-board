@@ -29,7 +29,7 @@ week,date,matchup,type,line_home_by,proj_home_by,spread_edge,spread_blend_edge,s
 7,2026-10-17,Louisville at Syracuse,power vs power,-14.5,-12.7,1.8,0.9,Syracuse,55.75,57.0,1.3,0.6,,Over
 7,2026-10-17,Massachusetts at Buffalo,smaller vs smaller,6.25,8.9,2.7,1.3,Buffalo,41.5,49.3,7.8,3.9,Massachusetts: rating up 13 vs last year,Over
 7,2026-10-17,Mississippi State at LSU,power vs power,14.5,12.6,-1.9,-0.9,Mississippi State,57.5,58.5,1.0,0.5,LSU: rating up 10 vs last year; Mississippi State: rating up 9 vs last year,Over
-7,2026-10-17,Missouri at Ole Miss,power vs power,6.0,4.8,-1.2,-0.6,Missouri,58.75,57.5,-1.2,-0.6,,Under
+7,2026-10-17,Missouri at Ole Miss,power vs power,5.75,4.8,-1.0,-0.5,Missouri,58.5,57.5,-1.0,-0.5,,Under
 7,2026-10-17,Navy at UTSA,smaller vs smaller,6.75,10.0,3.2,1.6,UTSA,55.5,55.0,-0.5,-0.3,Navy: rating down 7 vs last year,Under
 7,2026-10-17,Nebraska at Oregon,power vs power,7.5,2.3,-5.2,-2.6,Nebraska,52.5,54.0,1.5,0.8,Oregon: rating down 9 vs last year; Nebraska: rating up 11 vs last year,Over
 7,2026-10-17,Nevada at North Dakota State,smaller vs smaller,14.75,13.0,-1.8,-0.9,Nevada,42.5,45.7,3.2,1.6,,Over
@@ -39,7 +39,7 @@ week,date,matchup,type,line_home_by,proj_home_by,spread_edge,spread_blend_edge,s
 7,2026-10-17,Northwestern at Michigan State,power vs power,-7.5,-9.5,-2.0,-1.0,Northwestern,48.5,47.0,-1.5,-0.7,Northwestern: rating up 10 vs last year,Under
 7,2026-10-17,Notre Dame at BYU,power vs power,-10.5,-6.8,3.7,1.8,BYU,46.5,50.8,4.3,2.2,,Over
 7,2026-10-17,Ohio State at Indiana,power vs power,-3.5,3.7,7.2,3.6,Indiana,51.0,51.0,0.0,0.0,,Over
-7,2026-10-17,Ohio at Sacramento State,smaller vs smaller,-15.25,-10.2,5.1,2.5,Sacramento State,48.5,49.6,1.1,0.6,Sacramento State: rating down 20 vs last year,Over
+7,2026-10-17,Ohio at Sacramento State,smaller vs smaller,-15.25,-10.2,5.1,2.5,Sacramento State,48.25,49.6,1.4,0.7,Sacramento State: rating down 20 vs last year,Over
 7,2026-10-17,Oklahoma State at Houston,power vs power,4.75,13.9,9.2,4.6,Houston,62.5,55.1,-7.4,-3.7,Oklahoma State: rating up 10 vs last year,Under
 7,2026-10-17,Penn State at Michigan,power vs power,6.5,1.8,-4.7,-2.3,Penn State,42.5,44.5,2.0,1.0,,Over
 7,2026-10-17,Pittsburgh at Boston College,power vs power,-6.25,-7.8,-1.5,-0.8,Pittsburgh,42.5,49.9,7.4,3.7,,Over
@@ -51,9 +51,9 @@ week,date,matchup,type,line_home_by,proj_home_by,spread_edge,spread_blend_edge,s
 7,2026-10-17,Tulsa at Rice,smaller vs smaller,-4.25,-0.2,4.1,2.0,Rice,46.5,49.5,3.0,1.5,,Over
 7,2026-10-17,UNLV at Air Force,smaller vs smaller,-1.25,-0.5,0.7,0.4,Air Force,48.5,54.3,5.8,2.9,,Over
 7,2026-10-17,Utah at Colorado,power vs power,-15.75,-22.4,-6.6,-3.3,Utah,49.5,47.5,-2.0,-1.0,,Under
-7,2026-10-17,Virginia at SMU,power vs power,8.75,6.8,-2.0,-1.0,Virginia,51.5,52.3,0.8,0.4,,Over
+7,2026-10-17,Virginia at SMU,power vs power,9.25,6.8,-2.5,-1.2,Virginia,51.5,52.3,0.8,0.4,,Over
 7,2026-10-17,Wake Forest at California,power vs power,-9.75,-13.1,-3.3,-1.7,Wake Forest,53.5,53.1,-0.4,-0.2,Wake Forest: rating up 9 vs last year,Under
-7,2026-10-17,Washington State at Oregon State,power vs power,17.5,10.0,-7.5,-3.8,Washington State,52.5,49.3,-3.2,-1.6,Oregon State: rating up 15 vs last year,Under
+7,2026-10-17,Washington State at Oregon State,power vs power,18.25,10.0,-8.3,-4.1,Washington State,52.5,49.3,-3.2,-1.6,Oregon State: rating up 15 vs last year,Under
 7,2026-10-17,Western Michigan at Central Michigan,smaller vs smaller,-6.5,-7.6,-1.1,-0.5,Western Michigan,43.25,43.9,0.6,0.3,,Over
 7,2026-10-17,Wisconsin at UCLA,power vs power,2.5,3.9,1.4,0.7,UCLA,43.25,45.9,2.6,1.3,UCLA: rating up 15 vs last year; Wisconsin: rating up 9 vs last year,Over
 8,2026-10-23,Duke at Virginia,power vs power,6.5,-1.0,-7.5,-3.7,Duke,53.5,52.0,-1.5,-0.7,,Under
