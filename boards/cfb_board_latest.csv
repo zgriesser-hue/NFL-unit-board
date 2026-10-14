@@ -1,0 +1,60 @@
+week,date,matchup,type,line_home_by,proj_home_by,spread_edge,spread_pick,line_total,proj_total,total_edge,total_pick
+7,2026-10-14,Kennesaw State at Missouri State,smaller vs smaller,-3.0,0.0,3.0,Missouri State,52.75,51.6,-1.2,Under
+7,2026-10-14,Western Kentucky at Sam Houston,smaller vs smaller,-1.25,-3.1,-1.9,Western Kentucky,53.0,51.8,-1.2,Under
+7,2026-10-15,Colorado State at Texas State,power vs power,14.0,13.6,-0.4,Colorado State,69.5,67.3,-2.2,Under
+7,2026-10-15,East Carolina at UAB,smaller vs smaller,-4.25,-7.7,-3.4,East Carolina,47.5,51.5,4.0,Over
+7,2026-10-15,Georgia Southern at Old Dominion,smaller vs smaller,-3.5,1.5,5.0,Old Dominion,47.5,50.6,3.1,Over
+7,2026-10-16,App State at Coastal Carolina,smaller vs smaller,-1.5,1.2,2.7,Coastal Carolina,49.5,51.7,2.2,Over
+7,2026-10-16,Memphis at Tulane,smaller vs smaller,-6.75,-4.7,2.0,Tulane,55.5,52.1,-3.4,Under
+7,2026-10-16,Washington at Purdue,power vs power,3.5,-4.3,-7.8,Washington,51.75,55.1,3.3,Over
+7,2026-10-17,Akron at Miami (OH),smaller vs smaller,9.5,14.9,5.4,Miami (OH),46.25,49.9,3.6,Over
+7,2026-10-17,Alabama at Tennessee,power vs power,-8.5,-6.2,2.3,Tennessee,51.75,56.5,4.8,Over
+7,2026-10-17,Arizona State at Texas Tech,power vs power,14.5,19.1,4.6,Texas Tech,48.5,51.0,2.5,Over
+7,2026-10-17,Arkansas State at Southern Miss,smaller vs smaller,-7.0,-1.2,5.8,Southern Miss,62.25,57.0,-5.3,Under
+7,2026-10-17,Arkansas at Vanderbilt,power vs power,6.25,7.8,1.5,Vanderbilt,50.5,58.1,7.6,Over
+7,2026-10-17,Auburn at Georgia,power vs power,20.75,20.0,-0.8,Auburn,49.5,50.0,0.5,Over
+7,2026-10-17,Ball State at Bowling Green,smaller vs smaller,6.5,11.6,5.1,Bowling Green,47.5,48.8,1.3,Over
+7,2026-10-17,Charlotte at Temple,smaller vs smaller,21.0,20.5,-0.5,Charlotte,47.5,50.2,2.7,Over
+7,2026-10-17,Cincinnati at West Virginia,power vs power,1.75,-2.7,-4.5,Cincinnati,63.5,60.6,-2.9,Under
+7,2026-10-17,Florida Atlantic at Army,smaller vs smaller,2.75,10.7,7.9,Army,54.75,56.0,1.2,Over
+7,2026-10-17,Florida State at Miami,power vs power,21.5,21.8,0.3,Miami,56.5,54.3,-2.2,Under
+7,2026-10-17,Florida at Texas,power vs power,10.75,15.3,4.5,Texas,51.5,53.3,1.8,Over
+7,2026-10-17,Fresno State at San Diego State,power vs power,-7.5,-11.4,-3.9,Fresno State,46.25,42.4,-3.9,Under
+7,2026-10-17,Georgia State at James Madison,smaller vs smaller,12.5,17.3,4.8,James Madison,57.75,55.8,-2.0,Under
+7,2026-10-17,Georgia Tech at Virginia Tech,power vs power,10.0,4.3,-5.7,Georgia Tech,57.25,56.1,-1.2,Under
+7,2026-10-17,Kansas at Kansas State,power vs power,4.75,3.2,-1.5,Kansas,55.5,55.7,0.2,Over
+7,2026-10-17,Kent State at South Florida,smaller vs smaller,20.75,25.9,5.2,South Florida,45.5,49.8,4.3,Over
+7,2026-10-17,Kentucky at Oklahoma,power vs power,7.0,7.4,0.4,Oklahoma,43.75,45.2,1.4,Over
+7,2026-10-17,Louisiana Tech at UL Monroe,smaller vs smaller,-15.25,-14.1,1.2,UL Monroe,57.0,53.7,-3.3,Under
+7,2026-10-17,Louisville at Syracuse,power vs power,-14.5,-12.7,1.8,Syracuse,55.75,57.0,1.3,Over
+7,2026-10-17,Massachusetts at Buffalo,smaller vs smaller,6.25,8.9,2.7,Buffalo,41.5,49.3,7.8,Over
+7,2026-10-17,Mississippi State at LSU,power vs power,14.5,12.6,-1.9,Mississippi State,57.5,58.5,1.0,Over
+7,2026-10-17,Missouri at Ole Miss,power vs power,6.0,4.8,-1.2,Missouri,59.25,57.5,-1.7,Under
+7,2026-10-17,Navy at UTSA,smaller vs smaller,6.75,10.0,3.2,UTSA,55.5,55.0,-0.5,Under
+7,2026-10-17,Nebraska at Oregon,power vs power,7.5,2.3,-5.2,Nebraska,52.5,54.0,1.5,Over
+7,2026-10-17,Nevada at North Dakota State,smaller vs smaller,14.75,13.0,-1.8,Nevada,42.5,45.7,3.2,Over
+7,2026-10-17,New Mexico at Hawai'i,smaller vs smaller,-14.5,-15.8,-1.3,New Mexico,44.5,50.2,5.7,Over
+7,2026-10-17,North Carolina at Duke,power vs power,3.25,9.6,6.4,Duke,47.5,50.0,2.5,Over
+7,2026-10-17,Northern Illinois at Wyoming,smaller vs smaller,7.75,7.2,-0.5,Northern Illinois,40.5,39.5,-1.0,Under
+7,2026-10-17,Northwestern at Michigan State,power vs power,-7.75,-9.5,-1.7,Northwestern,48.5,47.0,-1.5,Under
+7,2026-10-17,Notre Dame at BYU,power vs power,-10.5,-6.8,3.7,BYU,46.5,50.8,4.3,Over
+7,2026-10-17,Ohio State at Indiana,power vs power,-3.5,3.7,7.2,Indiana,51.0,51.0,0.0,Over
+7,2026-10-17,Ohio at Sacramento State,smaller vs smaller,-15.25,-10.2,5.1,Sacramento State,48.5,49.6,1.1,Over
+7,2026-10-17,Oklahoma State at Houston,power vs power,4.75,13.9,9.2,Houston,62.5,55.1,-7.4,Under
+7,2026-10-17,Penn State at Michigan,power vs power,6.5,1.8,-4.7,Penn State,42.5,44.5,2.0,Over
+7,2026-10-17,Pittsburgh at Boston College,power vs power,-6.25,-7.8,-1.5,Pittsburgh,42.5,49.9,7.4,Over
+7,2026-10-17,Rutgers at Maryland,power vs power,4.5,5.3,0.8,Maryland,57.5,56.6,-0.9,Under
+7,2026-10-17,San José State at UTEP,smaller vs smaller,-7.5,-13.8,-6.3,San José State,46.75,48.9,2.2,Over
+7,2026-10-17,TCU at Baylor,power vs power,6.0,7.7,1.7,Baylor,48.25,52.9,4.7,Over
+7,2026-10-17,Toledo at Eastern Michigan,smaller vs smaller,-6.5,-7.3,-0.8,Toledo,53.5,53.6,0.1,Over
+7,2026-10-17,Troy at Louisiana,smaller vs smaller,4.25,3.4,-0.8,Troy,49.25,50.7,1.5,Over
+7,2026-10-17,Tulsa at Rice,smaller vs smaller,-4.25,-0.2,4.1,Rice,46.5,49.5,3.0,Over
+7,2026-10-17,UNLV at Air Force,smaller vs smaller,-1.25,-0.5,0.7,Air Force,48.5,54.3,5.8,Over
+7,2026-10-17,Utah at Colorado,power vs power,-15.75,-22.4,-6.6,Utah,49.5,47.5,-2.0,Under
+7,2026-10-17,Virginia at SMU,power vs power,8.75,6.8,-2.0,Virginia,51.5,52.3,0.8,Over
+7,2026-10-17,Wake Forest at California,power vs power,-9.75,-13.1,-3.3,Wake Forest,53.5,53.1,-0.4,Under
+7,2026-10-17,Washington State at Oregon State,power vs power,17.5,10.0,-7.5,Washington State,52.5,49.3,-3.2,Under
+7,2026-10-17,Western Michigan at Central Michigan,smaller vs smaller,-6.5,-7.6,-1.1,Western Michigan,43.25,43.9,0.6,Over
+7,2026-10-17,Wisconsin at UCLA,power vs power,2.5,3.9,1.4,UCLA,43.25,45.9,2.6,Over
+8,2026-10-23,Duke at Virginia,power vs power,6.5,-1.0,-7.5,Duke,53.5,52.0,-1.5,Under
+8,2026-10-23,Houston at Utah,power vs power,6.5,18.1,11.6,Utah,50.5,52.9,2.4,Over

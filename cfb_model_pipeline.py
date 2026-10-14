@@ -167,7 +167,7 @@ class Ratings:
                 self.lg["plays"].add((r.h_plays + r.a_plays) / 2)
 
 
-def history(g, p):
+def history(g, p, engine=False):
     eng, rows = Ratings(p), []
     for date, day in g[g["played"]].groupby("date", sort=True):
         if day["season"].iloc[0] != eng.season:
@@ -183,7 +183,7 @@ def history(g, p):
                      total_close=r.total_close, total_open=r.total_open, n_books=r.n_books, matchup=r.matchup, secb1g=r.secb1g)
             rows.append(f)
         eng.update(day)
-    return pd.DataFrame(rows)
+    return (pd.DataFrame(rows), eng) if engine else pd.DataFrame(rows)
 
 
 # ------------------------------------------------------------------ models
