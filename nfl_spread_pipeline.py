@@ -505,7 +505,7 @@ def stat_col(col, decay, adj):
 
 RET = {}          # unit -> Series indexed by (season, team): relative share of last season's snaps still on the roster
 
-def rating_hist(col, decay=None, adj=None, unit=None):
+def rating_hist(col, decay=None, adj=None, unit=None, lam=None):
     """Pregame rating of every team before every game: this season's earlier games + last season's average.
     decay < 1 weights recent games more; adj=True is opponent-adjusted."""
     decay = RATING_DECAY if decay is None else decay
@@ -519,7 +519,7 @@ def rating_hist(col, decay=None, adj=None, unit=None):
     if unit is not None and unit in RET:                       # last season counts less where the roster turned over
         prior = prior * RET[unit].reindex(pd.MultiIndex.from_arrays([tg["season"], tg["team"]])).fillna(1.0).values
     S, N = _prev_sums(z, decay)
-    return pd.Series((S + M * LAM * prior) / (N + M), index=key)
+    return pd.Series((S + M * (LAM if lam is None else lam) * prior) / (N + M), index=key)
 
 log("building the training frame ...")
 SNAP = load_years(nfl.load_snap_counts, range(PBP_FROM, LAST_SEASON + 1), "snap counts")
@@ -656,22 +656,23 @@ def run_experiments():
     extra_spec = [("run_off", "O-line", "off_rush", +1), ("pass_off", "Skill", "off_pass", +1)]
     inj_cols = [i[0] for i in INJ] + CONT_NAMES
 
-    def frame(spec, decay, adj, ret=False):
+    def frame(spec, decay, adj, ret=False, lam=None):
         Fv = F.copy()
         for name, unit, col, sign in spec:
             if col is None or name == "qb_swap":
                 continue                                           # QB terms do not depend on the variant
-            R = rating_hist(col, decay, adj, unit if ret else None)
+            R = rating_hist(col, decay, adj, unit if ret else None, lam)
             Fv[name] = np.nan_to_num(sign * (R.reindex(mi("home_team")).values - R.reindex(mi("away_team")).values))
         return Fv
 
     def oos(Fv, feats):
-        errs = []
+        errs, wks = [], []
         for sn in TEST_SEASONS:
             tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
             te = Fv[(Fv["season"] == sn) & Fv["game_id"].isin(ok)]
             errs.append(np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values))
-        return np.concatenate(errs)
+            wks.append(te["week"].values)
+        return np.concatenate(errs), np.concatenate(wks)
 
     variants = [("baseline (current model)", 1.0, False, False, []),
                 ("recency decay 0.95", 0.95, False, False, []), ("recency decay 0.90", 0.90, False, False, []),
@@ -686,26 +687,34 @@ def run_experiments():
                 ("+ all three new stats", 1.0, False, False, ["cpoe", "early", "xpl"]),
                 ("+ success rate, pass and rush (off and def)", 1.0, False, False, ["succ"]),
                 ("+ all four new stat groups", 1.0, False, False, ["cpoe", "early", "xpl", "succ"]),
-                ("last season trusted less after roster turnover", 1.0, False, False, [], True)]
-    variants = [v if len(v) == 6 else v + (False,) for v in variants]
+                ("last season trusted less after roster turnover", 1.0, False, False, [], True),
+                ("last season weight 0.0 (baseline 0.5)", 1.0, False, False, [], False, 0.0),
+                ("last season weight 0.25", 1.0, False, False, [], False, 0.25),
+                ("last season weight 0.75", 1.0, False, False, [], False, 0.75),
+                ("last season weight 1.0", 1.0, False, False, [], False, 1.0)]
+    variants = [v + (False,) * (6 - len(v)) + (None,) * (7 - max(len(v), 6)) for v in variants]
     if not RET:
         variants = [v for v in variants if not v[5]]
         print("  (roster-turnover variant skipped: returning-roster shares could not be built)")
     print("\nEXPERIMENTS: rating variants, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     base = None
-    for label, decay, adj, extra, groups, ret in variants:
+    base_wk = None
+    for label, decay, adj, extra, groups, ret, lam in variants:
         spec = spec_base + (extra_spec if extra else []) + [f for g in groups for f in NEW_GROUPS[g]]
-        Fv = frame(spec, decay, adj, ret)
+        Fv = frame(spec, decay, adj, ret, lam)
         feats = [x[0] for x in spec] + inj_cols + CTX
-        e = oos(Fv, feats)
+        e, wk_ = oos(Fv, feats)
+        early = wk_ <= 6
         if base is None:
-            base = e
-            print(f"  {label:<42} {e.mean():.3f}   ({len(e)} games; closing market {mae(r['mkt_close'], r['home_margin']):.3f})")
+            base, base_wk = e, wk_
+            print(f"  {label:<42} {e.mean():.3f}   weeks 1-6: {e[early].mean():.3f}   ({len(e)} games; closing market {mae(r['mkt_close'], r['home_margin']):.3f})")
             continue
         d = base - e                                                # + = better than baseline
         ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
         verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
-        print(f"  {label:<42} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
+        de = d[early]
+        print(f"  {label:<42} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}"
+              f"   | weeks 1-6: {e[early].mean():.3f} (change {de.mean():+.3f} +/- {1.96 * de.std(ddof=1) / np.sqrt(len(de)):.3f})")
     print("  (adopt a variant only when it is a clear gain; then set RATING_DECAY / OPP_ADJ / EXTRA_FEATS / NEW_FEATS / RET_PRIOR for the weekly run)")
 
 if EXPERIMENTS and len(r):
@@ -1220,7 +1229,9 @@ def fetch_market_spreads(key):
     return pd.DataFrame(rows)
 
 season_now = int(games.loc[games["home_margin"].notna(), "season"].max())
-def current_rating(col, decay=None, adj=None, unit=None):
+PRIOR_PART = {}      # feature -> the part of each team's rating that comes from last season (for the Teams tab breakdown)
+
+def current_rating(col, decay=None, adj=None, unit=None, parts=False):
     decay = RATING_DECAY if decay is None else decay
     adj = OPP_ADJ if adj is None else adj
     c = stat_col(col, decay, adj)
@@ -1228,11 +1239,15 @@ def current_rating(col, decay=None, adj=None, unit=None):
     now, last = tg["season"] == season_now, tg["season"] == season_now - 1
     pr = z[last].groupby(tg.loc[last, "team"]).mean()
     rf = RET[unit].xs(season_now, level="season") if unit is not None and unit in RET and season_now in RET[unit].index.get_level_values("season") else None
-    out = {}
+    out, out_prior = {}, {}
     for t in sorted(set(tg["team"])):
         v = z[now & (tg["team"] == t)].to_numpy()               # tg is in time order within each team
         w = decay ** np.arange(len(v) - 1, -1, -1)
-        out[t] = ((w * v).sum() + M * LAM * pr.get(t, 0.0) * (rf.get(t, 1.0) if rf is not None else 1.0)) / (w.sum() + M)
+        pri = M * LAM * pr.get(t, 0.0) * (rf.get(t, 1.0) if rf is not None else 1.0)
+        out[t] = ((w * v).sum() + pri) / (w.sum() + M)
+        out_prior[t] = pri / (w.sum() + M)
+    if parts:
+        return pd.Series(out), pd.Series(out_prior)
     return pd.Series(out)
 
 wk = int(games[(games["season"] == season_now) & (games["is_playoff"] == 0)
@@ -1459,7 +1474,9 @@ for name, unit, col, sign in SPEC:
         _cur = current_rating("qb_pre")
         ADV[name] = qb_post.reindex(_cur.index) - (_cur + tg["qb_pre"].mean())
     else:
-        ADV[name] = sign * current_rating(col, unit=unit if RET_PRIOR else None)
+        _cr, _pp = current_rating(col, unit=unit if RET_PRIOR else None, parts=True)
+        ADV[name] = sign * _cr
+        PRIOR_PART[name] = sign * _pp
 def burden(t, groups):
     return float(sum(bw.loc[t, g] for g in groups if t in bw.index and g in bw.columns))
 for name, unit, groups in INJ:
@@ -1525,10 +1542,14 @@ stamp = pd.Timestamp.now(tz="UTC").strftime("%Y%m%dT%H%MZ")
 board.to_csv(f"{BOARD_DIR}/unit_board_{season_now}_wk{wk}_{stamp}.csv", index=False)
 board.to_csv(f"{BOARD_DIR}/unit_board_latest.csv", index=False)
 teamtab.to_csv(f"{BOARD_DIR}/unit_team_ratings_latest.csv")
-# why each team rates where it does: points contributed by each stat (vs an average team), by unit
-_wy = pd.DataFrame({f: {t: float(coef[f] * ADV[f].get(t, 0.0)) for t in teams} for f in FEATS_U if f in ADV})
-_wy = _wy - _wy.mean()
-_wy = _wy.rename_axis("team").reset_index().melt(id_vars="team", var_name="stat", value_name="points")
+# why each team rates where it does: points contributed by each stat (vs an average team), by unit,
+# split into the part from last season's carried-over average and the rest (this season's games, QB and injury terms)
+_tot = pd.DataFrame({f: {t: float(coef[f] * ADV[f].get(t, 0.0)) for t in teams} for f in FEATS_U if f in ADV})
+_pri = pd.DataFrame({f: {t: float(coef[f] * PRIOR_PART[f].get(t, 0.0)) for t in teams} for f in FEATS_U if f in PRIOR_PART}).reindex(columns=_tot.columns).fillna(0.0)
+_tot, _pri = _tot - _tot.mean(), _pri - _pri.mean()
+_wy = _tot.rename_axis("team").reset_index().melt(id_vars="team", var_name="stat", value_name="points")
+_pm = _pri.rename_axis("team").reset_index().melt(id_vars="team", var_name="stat", value_name="points_last_season")
+_wy = _wy.merge(_pm, on=["team", "stat"], how="left").fillna({"points_last_season": 0.0})
 _wy["unit"] = _wy["stat"].map(unit_of)
 _wy.round(3).to_csv(f"{BOARD_DIR}/unit_team_why_latest.csv", index=False)
 qb_grades.to_csv(f"{BOARD_DIR}/unit_qb_grades_latest.csv", index=False)

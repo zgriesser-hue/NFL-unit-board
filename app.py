@@ -159,14 +159,20 @@ with tab_teams:
             st.subheader("Why does a team rate this way?")
             tm = st.selectbox("Team", list(t.index), key="why_team")
             w = why[why["team"] == tm].copy()
-            w = w[w["points"].abs() > 0.005].sort_values("points")
+            if "points_last_season" not in w:
+                w["points_last_season"] = 0.0
+            w["Last season (carried over)"] = w["points_last_season"]
+            w["This season"] = w["points"] - w["points_last_season"]
+            w = w[(w["points"].abs() > 0.005) | (w["Last season (carried over)"].abs() > 0.005)].sort_values("points")
             names = {"qb_rating": "QB rating", "qb_swap": "QB change", "prot_press": "Pressure allowed", "prot_sack": "Sacks allowed",
                      "run_block": "Run blocking", "sep": "Receiver separation", "yac": "Yards after catch", "drops": "Drops",
                      "press_gen": "Pressure created", "sack_gen": "Sacks created", "run_def": "Run defense", "pass_def": "Pass defense",
                      "qb_inj": "QB injuries", "ol_inj": "O-line injuries", "sk_inj": "Skill injuries", "fr_inj": "Front injuries",
                      "cov_inj": "Coverage injuries"}
             w["Stat"] = w["unit"].astype(str) + ": " + w["stat"].map(lambda x: names.get(x, x))
-            st.bar_chart(w.set_index("Stat")["points"], horizontal=True)
+            st.bar_chart(w.set_index("Stat")[["This season", "Last season (carried over)"]], horizontal=True)
+            lp, tp = w["Last season (carried over)"].sum(), w["This season"].sum()
+            st.caption(f"{tm}: {tp + lp:+.1f} points in all, of which {lp:+.1f} comes from last season's average and {tp:+.1f} from this season's games, QB and injuries.")
             st.caption("Points each stat adds to the team's rating versus an average team. These come from a team's play this season "
                        "(pressure, sacks, run and pass defense, receiver stats), not from its scores, so a team can rate well "
                        "while its results are poor. Early in the season about half of each stat still comes from last season's average, "
