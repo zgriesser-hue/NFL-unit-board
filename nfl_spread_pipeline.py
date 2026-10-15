@@ -1327,11 +1327,12 @@ if os.path.exists(_ov):
 
 # ---- player pool (feeds the app's What-if tab) and optional manual injury overrides.
 # injury_overrides.csv columns: team, player, status, optional week.  status = Out / Doubtful / Questionable / Healthy,
-# or a number 0-1 (your own chance he misses the game).  It replaces that player's reported status for this week's board.
+# or a number 0-1 (your own chance he misses the game), or Gone / Retired / Traded / Released (out for the year: counted as Out and dropped from the What-if list).  It replaces that player's reported status for this week's board.
 _norm = lambda s: re.sub(r"\s+", " ", re.sub(r"\b(jr|sr|ii|iii|iv)\b", "", re.sub(r"[^a-z ]", "", str(s).lower()))).strip()
 _GRP = {"QB": "QB", "T": "OL", "G": "OL", "C": "OL", "OT": "OL", "OG": "OL", "OL": "OL", "DE": "DL", "DT": "DL",
         "NT": "DL", "DL": "DL", "LB": "LB", "ILB": "LB", "OLB": "LB", "MLB": "LB", "CB": "DB", "S": "DB", "FS": "DB",
         "SS": "DB", "DB": "DB", "WR": "WR", "TE": "TE", "RB": "RB", "FB": "RB"}
+_GONE = {"gone", "retired", "traded", "released", "cut", "season"}   # out for the year / no longer on the team: counted as Out and removed from the What-if list
 _STATUS_W = {"out": 1.0, "doubtful": 0.85, "questionable": 0.25, "probable": 0.0, "full": 0.0, "healthy": 0.0,
              "active": 0.0, "available": 0.0}
 POOL = pd.DataFrame()
@@ -1384,6 +1385,7 @@ except Exception as e:
 _io = os.path.join(ROOT if not IN_COLAB else OUT, "injury_overrides.csv")
 if os.path.exists(_io) and len(POOL):
     iov = pd.read_csv(_io)
+    _drop = []
     if "week" in iov:
         iov = iov[iov["week"].isna() | (iov["week"] == wk)]
     for _, o in iov.iterrows():
@@ -1396,7 +1398,7 @@ if os.path.exists(_io) and len(POOL):
         try:
             wn = float(sv)
         except ValueError:
-            wn = _STATUS_W.get(sv)
+            wn = 1.0 if sv in _GONE else _STATUS_W.get(sv)
         if wn is None:
             print(f"  injury override skipped: unknown status '{o['status']}' for {o['player']}")
             continue
@@ -1408,8 +1410,13 @@ if os.path.exists(_io) and len(POOL):
             bw[g] = 0.0
         bw.loc[t, g] = max(float(bw.loc[t, g]) + (wn - POOL.loc[i, "w_now"]) * POOL.loc[i, "snap_share"], 0.0)
         POOL.loc[i, ["w_now", "override"]] = [wn, str(o["status"])]
+        if sv in _GONE:
+            _drop.append(i)
         print(f"  injury override: {t} {POOL.loc[i, 'name']} -> {o['status']} (weight {wn:.2f}, snap share {POOL.loc[i, 'snap_share']:.2f})"
               + ("  [QB: if he is out, also set the replacement in qb_overrides.csv]" if g == "QB" and wn >= 0.85 else ""))
+
+if os.path.exists(_io) and len(POOL) and _drop:
+    POOL = POOL.drop(index=_drop).reset_index(drop=True)
 
 # ---- automatic starter check. The board's default starter is whoever played last, which is wrong when
 #  (A) that QB is Out/Doubtful on this week's report: use a healthy QB on the team, or
