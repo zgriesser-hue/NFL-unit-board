@@ -451,9 +451,10 @@ with tab_bets:
     BET_COLS = ["placed", "game_id", "season", "week", "away_team", "home_team", "pick", "line", "odds", "stake",
                 "book", "note", "model_home", "market_home", "type", "desc", "manual_result"]
     if "bets" not in st.session_state:
-        st.session_state["bets"] = pd.DataFrame(columns=BET_COLS)
-    st.caption("Your bets live in this browser session only (nothing is saved to the repo or the server). "
-               "Download the file after you add bets, and load it here next time.")
+        saved = load_csv("bets.csv")
+        st.session_state["bets"] = saved.reindex(columns=BET_COLS) if saved is not None and len(saved) else pd.DataFrame(columns=BET_COLS)
+    st.caption("Your bets are saved in the repo (bets.csv) and loaded here automatically; ask Claude to add new ones from a screenshot. "
+               "Anything you add or change in this tab lasts only for this browser session. Download the file to keep it, or load a file to replace the list.")
     up = st.file_uploader("Load saved bets (my_bets.csv)", type="csv", key="bets_up")
     if up is not None and st.session_state.get("bets_up_id") != f"{up.name}-{up.size}":
         try:

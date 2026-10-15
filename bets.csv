@@ -1,0 +1,6 @@
+placed,game_id,season,week,away_team,home_team,pick,line,odds,stake,book,note,model_home,market_home,type,desc,manual_result
+2026-10-14 12:00,2026_06_CAR_PHI,2026,6,CAR,PHI,Over,42.0,-112,25,BetRivers,,,,Total,,
+2026-10-14 12:00,2026_06_NYJ_NE,2026,6,NYJ,NE,Over,43.5,-113,30,BetRivers,,,,Total,,
+2026-10-14 12:00,2026_06_DAL_GB,2026,6,DAL,GB,Under,52.5,-105,25,DraftKings,,,,Total,,
+2026-10-15 10:37,2026_06_CAR_PHI,2026,6,CAR,PHI,PHI,,102,35,Novig,,4.397201,-1.0,Moneyline,,
+2026-10-15 10:38,2026_06_SEA_DEN,2026,6,SEA,DEN,SEA,-2.5,-112,35,Novig,,-0.951217,-2.5,Spread,,
