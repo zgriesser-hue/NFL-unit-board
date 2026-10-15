@@ -69,3 +69,32 @@ snap_time,book,player,market,line,over_price,under_price,home,away,event_id,comm
 2026-10-14T23:32Z,fanduel,Victor Wembanyama,player_assists,0.0,142,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
 2026-10-14T23:32Z,fanduel,Victor Wembanyama,player_points,0.0,-142,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
 2026-10-14T23:32Z,fanduel,Victor Wembanyama,player_rebounds,0.0,-4000,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,3rd Quarter,player_points,20.5,-170,115.0,Miami Heat,Brooklyn Nets,0c332583ce0e142f,2026-10-15T22:15:00.000Z
+2026-10-15T23:24Z,fanduel,Cade Cunningham,player_assists,0.0,-1000,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,fanduel,Cade Cunningham,player_points,0.0,-295,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,fanduel,Cade Cunningham,player_rebounds,0.0,-460,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,fanduel,Jayson Tatum,player_assists,0.0,-136,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,fanduel,Jayson Tatum,player_points,0.0,-480,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,fanduel,Jayson Tatum,player_rebounds,0.0,-250,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-15T23:24Z,draftkings,Jalen Brunson,player_points,27.5,-104,-123.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Jaylen Brown,player_points,19.5,-119,-107.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Jaylen Brown,player_rebounds,5.5,103,-135.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Joel Embiid,player_points,22.5,-121,-106.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Joel Embiid,player_rebounds,8.5,102,-135.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Josh Hart,player_points,12.5,100,-128.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,OG Anunoby,player_rebounds,5.5,112,-148.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,draftkings,Tyrese Maxey,player_points,21.5,-111,-115.0,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.0000000Z
+2026-10-15T23:24Z,fanduel,Jalen Brunson,player_assists,0.0,-1200,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,Jalen Brunson,player_points,0.0,-148,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,Jalen Brunson,player_rebounds,0.0,152,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,Joel Embiid,player_points,0.0,-215,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,LeBron James,player_assists,0.0,-390,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,LeBron James,player_points,0.0,196,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,LeBron James,player_rebounds,0.0,200,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-15T23:24Z,fanduel,Shai Gilgeous-Alexander,player_assists,0.0,-650,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,Shai Gilgeous-Alexander,player_points,0.0,-122,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,Shai Gilgeous-Alexander,player_rebounds,0.0,-172,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,Victor Wembanyama,player_assists,0.0,630,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,Victor Wembanyama,player_points,0.0,176,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,fanduel,Victor Wembanyama,player_rebounds,0.0,-650,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-15T23:24Z,draftkings,Shai Gilgeous-Alexander,player_rebounds,4.5,123,-162.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00Z
