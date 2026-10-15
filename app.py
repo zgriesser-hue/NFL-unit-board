@@ -154,6 +154,23 @@ with tab_teams:
     else:
         st.caption("Points vs an average team, by unit, after the latest completed games.")
         st.dataframe(t.round(1), use_container_width=True)
+        why = load_csv("boards/unit_team_why_latest.csv")
+        if why is not None and len(why):
+            st.subheader("Why does a team rate this way?")
+            tm = st.selectbox("Team", list(t.index), key="why_team")
+            w = why[why["team"] == tm].copy()
+            w = w[w["points"].abs() > 0.005].sort_values("points")
+            names = {"qb_rating": "QB rating", "qb_swap": "QB change", "prot_press": "Pressure allowed", "prot_sack": "Sacks allowed",
+                     "run_block": "Run blocking", "sep": "Receiver separation", "yac": "Yards after catch", "drops": "Drops",
+                     "press_gen": "Pressure created", "sack_gen": "Sacks created", "run_def": "Run defense", "pass_def": "Pass defense",
+                     "qb_inj": "QB injuries", "ol_inj": "O-line injuries", "sk_inj": "Skill injuries", "fr_inj": "Front injuries",
+                     "cov_inj": "Coverage injuries"}
+            w["Stat"] = w["unit"].astype(str) + ": " + w["stat"].map(lambda x: names.get(x, x))
+            st.bar_chart(w.set_index("Stat")["points"], horizontal=True)
+            st.caption("Points each stat adds to the team's rating versus an average team. These come from a team's play this season "
+                       "(pressure, sacks, run and pass defense, receiver stats), not from its scores, so a team can rate well "
+                       "while its results are poor. Early in the season about half of each stat still comes from last season's average, "
+                       "and that share shrinks every week.")
 
 # ---------------------------------------------------------------- QBs
 with tab_qb:
