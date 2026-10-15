@@ -1525,6 +1525,12 @@ stamp = pd.Timestamp.now(tz="UTC").strftime("%Y%m%dT%H%MZ")
 board.to_csv(f"{BOARD_DIR}/unit_board_{season_now}_wk{wk}_{stamp}.csv", index=False)
 board.to_csv(f"{BOARD_DIR}/unit_board_latest.csv", index=False)
 teamtab.to_csv(f"{BOARD_DIR}/unit_team_ratings_latest.csv")
+# why each team rates where it does: points contributed by each stat (vs an average team), by unit
+_wy = pd.DataFrame({f: {t: float(coef[f] * ADV[f].get(t, 0.0)) for t in teams} for f in FEATS_U if f in ADV})
+_wy = _wy - _wy.mean()
+_wy = _wy.rename_axis("team").reset_index().melt(id_vars="team", var_name="stat", value_name="points")
+_wy["unit"] = _wy["stat"].map(unit_of)
+_wy.round(3).to_csv(f"{BOARD_DIR}/unit_team_why_latest.csv", index=False)
 qb_grades.to_csv(f"{BOARD_DIR}/unit_qb_grades_latest.csv", index=False)
 coef.rename("coef").rename_axis("feature").reset_index().to_csv(f"{BOARD_DIR}/model_weights_latest.csv", index=False)
 if len(POOL):
