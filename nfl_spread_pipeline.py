@@ -761,6 +761,11 @@ def run_injury_tests():
             errs.append(np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values))
         return np.concatenate(errs)
 
+    _lines = []
+    _p = print
+    def print(*a, **k):                                   # echo to the log and keep a copy for boards/injury_value_test_latest.txt
+        _p(*a, **k)
+        _lines.append(" ".join(str(x) for x in a))
     print("\nINJURY VALUATION TESTS, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     cur = None
     cache = {}
@@ -799,9 +804,15 @@ def run_injury_tests():
         verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
         print(f"  {label:<62} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
     print("  (adopt a variant only when it is a clear gain; otherwise the current valuation stays)")
+    with open(f"{BOARD_DIR}/injury_value_test_latest.txt", "w") as f:
+        f.write("\n".join(_lines) + "\n")
 
-if INJ_TEST and len(r):
-    run_injury_tests()
+if INJ_TEST:
+    print("\nINJ_TEST is on: running the injury valuation tests ...")
+    if len(r):
+        run_injury_tests()
+    else:
+        print("INJURY VALUATION TESTS skipped: no out-of-sample games with market lines to test on.")
 
 # ---- deeper backtest of the two most promising candidates: completion % over expected and success rate.
 # Season by season, early vs late weeks, share of games improved, and the weights the model actually gives them.
