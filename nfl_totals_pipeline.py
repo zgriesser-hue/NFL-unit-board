@@ -365,6 +365,19 @@ def retractable_check(d, X):
                                                          "actual_minus_close": (x["total_pts"] - x["mkt_total_close"]).mean()}), include_groups=False)
     print("\nRetractable home games, roof closed/dome (True) vs open (False):")
     print(g.round(2).to_string())
+    c = d[d["mkt_total_close"].notna() & (d["neutral"] == 0)].copy()
+    c["miss"] = c["total_pts"] - c["mkt_total_close"]
+    c["grp"] = np.where(c["home_team"].isin(RET), "retractable home", "all other games")
+    s = c.groupby(["season", "grp"])["miss"].agg(games="size", avg_over_close="mean", sd="std").reset_index()
+    s["std_err"] = s["sd"] / np.sqrt(s["games"])
+    print("\nDOES THE MARKET UNDERPRICE RETRACTABLE-ROOF TOTALS? actual total minus closing total, by season (positive = went over):")
+    print(s.drop(columns="sd").round(2).to_string(index=False))
+    rr = c[c["grp"] == "retractable home"]
+    ov = rr.groupby("season")["miss"].apply(lambda x: (x > 0).sum() / max(((x > 0) | (x < 0)).sum(), 1)).round(3)
+    print("Share of retractable home games that went OVER the close (pushes excluded), by season:")
+    print(ov.to_string())
+    print(f"All seasons: {rr['miss'].mean():+.2f} points over {len(rr)} games (std err {rr['miss'].std() / np.sqrt(len(rr)):.2f}); "
+          f"league-wide other games {c.loc[c['grp'] == 'all other games', 'miss'].mean():+.2f}")
     mask = d["home_team"].isin(RET) & (d["neutral"] == 0)
     rows = []
     for name, roof in {"as recorded (hindsight)": d["roof"], "all retractable home games indoor": d["roof"].where(~mask, "closed"),
