@@ -349,6 +349,54 @@ def wind_check(d, X):
     print(pd.DataFrame(rows).round(3).to_string(index=False))
 
 
+def retractable_check(d, X):
+    """Retractable-roof stadiums (ATL, DAL, HOU, IND, ARI): how often was the roof closed, and does coding the home games
+    as indoor (instead of waiting for a forecast) help? Variants re-run the walk-forward test on those games (lower MAE = better).
+    "as recorded" uses the roof status known after the game (hindsight); the upcoming slate cannot know it."""
+    RET = ["ARI", "ATL", "DAL", "HOU", "IND"]
+    r = d[d["home_team"].isin(RET)]
+    print("\nRETRACTABLE ROOFS: share of home games by recorded roof status")
+    t = r.groupby("home_team")["roof"].value_counts(normalize=True).unstack(fill_value=0).round(2)
+    t["games"] = r.groupby("home_team").size()
+    print(t.to_string())
+    ok = r[r["mkt_total_close"].notna()]
+    ok = ok.assign(indoor=ok["roof"].isin(["dome", "closed"]))
+    g = ok.groupby("indoor").apply(lambda x: pd.Series({"games": len(x), "avg_total": x["total_pts"].mean(),
+                                                         "actual_minus_close": (x["total_pts"] - x["mkt_total_close"]).mean()}), include_groups=False)
+    print("\nRetractable home games, roof closed/dome (True) vs open (False):")
+    print(g.round(2).to_string())
+    mask = d["home_team"].isin(RET) & (d["neutral"] == 0)
+    rows = []
+    for name, roof in {"as recorded (hindsight)": d["roof"], "all retractable home games indoor": d["roof"].where(~mask, "closed"),
+                       "all retractable home games outdoor": d["roof"].where(~mask, "outdoors")}.items():
+        dd = d.assign(roof=roof)
+        Xv = make_features_from(dd, X)
+        errs = []
+        for sn in TEST_SEASONS:
+            tr, te = d["season"] < sn, d["season"] == sn
+            if tr.sum() < 200 or te.sum() == 0:
+                continue
+            m = TotalsModel().fit(Xv[tr], d.loc[tr, "total_pts"])
+            errs.append((m.predict(Xv[te]) - d.loc[te, "total_pts"]).abs())
+        if errs:
+            e = pd.concat(errs)
+            rows.append({"variant": name, "all_games_MAE": e.mean(), "retractable_home_MAE": e[e.index.isin(d.index[mask])].mean()})
+    print("\nWalk-forward test (test seasons " + ", ".join(map(str, TEST_SEASONS)) + "):")
+    print(pd.DataFrame(rows).round(3).to_string(index=False))
+
+
+def make_features_from(dd, X):
+    """Recompute only the weather features from a table with a (possibly changed) roof column."""
+    Xv = X.copy()
+    dome = dd["roof"].isin(["dome", "closed"])
+    temp = dd["temp_actual"].where(~dome, 70.0).fillna(65.0)
+    wind = dd["wind_actual"].where(~dome, 0.0).fillna(0.0)
+    Xv["dome"] = dome.astype(float).values
+    Xv["cold"] = (45.0 - temp).clip(lower=0).values
+    Xv["windy"] = (wind - 10.0).clip(0, WIND_CAP).values
+    return Xv
+
+
 def signal_map(r, d, Xmon, col="model_mon", min_edge=1.0):
     """Where does the as-of-Monday model beat the OPENING total? Splits the games it disagrees with by side, edge size, QB
     situation, roof, line level, time of year, division and season. Many splits means some look good by luck:
@@ -662,6 +710,10 @@ def main():
         wind_check(d, X)
     except Exception as e:
         print("(wind check skipped:", str(e)[:100] + ")")
+    try:
+        retractable_check(d, X)
+    except Exception as e:
+        print("(retractable-roof check skipped:", str(e)[:100] + ")")
 
     if wk is None:
         print("No upcoming regular-season games found; nothing to put on the board.")
