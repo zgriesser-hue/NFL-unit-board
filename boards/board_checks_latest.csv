@@ -1,0 +1,12 @@
+checked_utc,level,check,detail
+2026-10-16 16:14,WARN,Missing lines,1 of 14 games have no market spread (SEA@DEN).
+2026-10-16 16:14,WARN,Injuries,Only 2 of 28 teams on this slate have injury report entries; the report may be incomplete or not out yet.
+2026-10-16 16:14,WARN,Quarterback,"TB: Baker Mayfield (auto: Baker Mayfield is back from injury (missed 2), J.Daniels was the fill-in (rated from his games)). Confirm who starts."
+2026-10-16 16:14,WARN,Quarterback,"WAS: Marcus Mariota (auto: Marcus Mariota is back from injury (missed 1), J.Daniels was the fill-in (rated from his games)). Confirm who starts."
+2026-10-16 16:14,WARN,Quarterback,"CHI: Caleb Williams (auto: Caleb Williams is back from injury (missed 3), T.Bagent was the fill-in (rated from his games)). Confirm who starts."
+2026-10-16 16:14,WARN,Quarterback,"BAL: Lamar Jackson (auto: Lamar Jackson is back from injury (missed 1), T.Huntley was the fill-in (rated from his games)). Confirm who starts."
+2026-10-16 16:14,INFO,Large edge,"CAR@PHI: model is 7.9 points from the market. Big gaps are usually missing news, not an edge."
+2026-10-16 16:14,INFO,Large edge,"CHI@ATL: model is 4.7 points from the market. Big gaps are usually missing news, not an edge."
+2026-10-16 16:14,INFO,Weather,No forecast yet for 1 outdoor games (HOU@JAX); treated as mild.
+2026-10-16 16:14,WARN,Totals quarterback,"LV: K.Cousins/F.Mendoza (CHECK: K.Cousins left last game early (50% K.Cousins, 50% F.Mendoza))"
+2026-10-16 16:14,WARN,Totals quarterback,"CHI: T.Bagent/C.Keenum (CHECK: T.Bagent left last game early (50% T.Bagent, 50% C.Keenum))"

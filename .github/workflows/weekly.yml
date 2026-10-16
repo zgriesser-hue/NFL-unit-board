@@ -79,6 +79,10 @@ jobs:
         run: python scheme_profiles.py
 
 
+      - name: Check the boards
+        continue-on-error: true
+        run: python board_checks.py
+
       - name: Grade past boards
         run: python grade_boards.py
 
