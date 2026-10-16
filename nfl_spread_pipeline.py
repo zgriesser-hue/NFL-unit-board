@@ -762,11 +762,10 @@ def run_injury_tests():
         return np.concatenate(errs)
 
     _lines = []
-    _p = print
-    def print(*a, **k):                                   # echo to the log and keep a copy for boards/injury_value_test_latest.txt
-        _p(*a, **k)
+    def say(*a):                                          # echo to the log and keep a copy for boards/injury_value_test_latest.txt
+        print(*a, flush=True)
         _lines.append(" ".join(str(x) for x in a))
-    print("\nINJURY VALUATION TESTS, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
+    say("\nINJURY VALUATION TESTS, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
     cur = None
     cache = {}
     variants = [("current (status weight x recent snap share)", None, []),
@@ -793,24 +792,29 @@ def run_injury_tests():
             Fv[feats] = Fv[feats].fillna(0.0)
             e = oos(Fv, feats)
         except Exception as ex:
-            print(f"  {label:<62} skipped ({str(ex)[:70]})")
+            say(f"  {label:<62} skipped ({str(ex)[:70]})")
             continue
         if cur is None:
             cur = e
-            print(f"  {label:<62} {e.mean():.3f}   ({len(e)} games)")
+            say(f"  {label:<62} {e.mean():.3f}   ({len(e)} games)")
             continue
         d = cur - e
         ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
         verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
-        print(f"  {label:<62} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
-    print("  (adopt a variant only when it is a clear gain; otherwise the current valuation stays)")
+        say(f"  {label:<62} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
+    say("  (adopt a variant only when it is a clear gain; otherwise the current valuation stays)")
     with open(f"{BOARD_DIR}/injury_value_test_latest.txt", "w") as f:
         f.write("\n".join(_lines) + "\n")
 
 if INJ_TEST:
     print("\nINJ_TEST is on: running the injury valuation tests ...")
     if len(r):
-        run_injury_tests()
+        try:
+            run_injury_tests()
+        except Exception:
+            import traceback
+            print("INJURY VALUATION TESTS failed (the board itself is unaffected):")
+            traceback.print_exc()
     else:
         print("INJURY VALUATION TESTS skipped: no out-of-sample games with market lines to test on.")
 
