@@ -1,0 +1,39 @@
+returning production loaded for 1566 team-seasons
+
+RETURNING PRODUCTION: gap to the closing line by season (model miss minus market miss, points; smaller is better)
+  variant                               2017    2018    2019    2021    2022    2023    2024    2025    2026      all   win% at 2+ (spread) / 3+ (total)
+  SPREAD
+  today's carry-over (K=0)               nan    0.45    0.56    0.62    0.72    0.51    0.94    0.59    1.33     0.67   49.2% (n=3709)
+  carry-over moves with returning, K=0.5     nan    0.47    0.63    0.68    0.71    0.53    0.92    0.59    1.32     0.69   49.3% (n=3752)
+  carry-over moves with returning, K=1     nan    0.51    0.76    0.71    0.73    0.56    0.94    0.60    1.40     0.73   49.5% (n=3798)
+  carry-over moves with returning, K=2     nan    0.66    1.05    0.93    0.86    0.62    1.03    0.69    1.66     0.88   49.7% (n=3909)
+  TOTAL
+  today's carry-over (K=0)               nan    0.64    0.44    0.29    0.73    0.30    0.17    0.40    0.44     0.42   49.3% (n=2517)
+  carry-over moves with returning, K=0.5     nan    0.69    0.39    0.26    0.74    0.29    0.16    0.41    0.45     0.42   49.8% (n=2525)
+  carry-over moves with returning, K=1     nan    0.78    0.37    0.25    0.79    0.28    0.16    0.41    0.50     0.44   49.3% (n=2594)
+  carry-over moves with returning, K=2     nan    0.93    0.40    0.28    0.90    0.28    0.15    0.45    0.53     0.48   49.7% (n=2766)
+
+
+MARKET BLEND, SPREADS: actual = a + b*market + c*(model - market), 5826 games, seasons [2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026]
+  b (weight on the market) = 1.00 +/- 0.03;  c (weight the model earns on top) = -0.05 +/- 0.09
+    2018: c = +0.03 (772 games)
+    2019: c = +0.07 (774 games)
+    2021: c = -0.08 (770 games)
+    2022: c = -0.17 (776 games)
+    2023: c = -0.06 (792 games)
+    2024: c = -0.05 (798 games)
+    2025: c = +0.01 (808 games)
+    2026: c = -0.17 (336 games)
+  average miss of market + w*(model - market):  w=0: 12.144, w=0.25: 12.216, w=0.5: 12.356, w=0.75: 12.553, w=1: 12.813   (closing line alone = w=0)
+
+MARKET BLEND, TOTALS: actual = a + b*market + c*(model - market), 5826 games, seasons [2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026]
+  b (weight on the market) = 0.85 +/- 0.06;  c (weight the model earns on top) = -0.14 +/- 0.12
+    2018: c = -0.15 (772 games)
+    2019: c = +0.05 (774 games)
+    2021: c = -0.16 (770 games)
+    2022: c = -0.23 (776 games)
+    2023: c = -0.24 (792 games)
+    2024: c = +0.03 (798 games)
+    2025: c = -0.27 (808 games)
+    2026: c = -0.40 (336 games)
+  average miss of market + w*(model - market):  w=0: 12.604, w=0.25: 12.633, w=0.5: 12.715, w=0.75: 12.847, w=1: 13.027   (closing line alone = w=0)
