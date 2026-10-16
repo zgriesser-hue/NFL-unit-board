@@ -1,0 +1,46 @@
+name: cfb-returning-test
+
+# Two college football tests: (1) does returning production improve the year-to-year carry-over of team ratings, and (2) how much weight
+# does the model earn on top of the closing line. Needs the games already downloaded (run cfb-model first) and the CFBD_API_KEY secret.
+# Results: boards/cfb_returning_test_latest.txt (and the log). Run by hand: Actions > cfb-returning-test > Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cfb-returning-test
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas numpy scikit-learn requests
+      - name: Download returning production
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: python -u cfb_fetch_returning.py
+        continue-on-error: true      # the blend test still runs without it
+      - name: Run the tests
+        run: python -u cfb_returning_test.py
+      - name: Commit results
+        if: always()
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add data/cfb_returning.csv boards/cfb_returning_test_latest.txt 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "cfb returning test $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3 4; do
+            git pull --rebase -X theirs origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
