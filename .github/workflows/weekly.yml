@@ -16,6 +16,10 @@ on:
         description: "Test rating variants (opponent adjustment, recency decay, extra EPA stats) side by side"
         type: boolean
         default: false
+      injuries:
+        description: "Test other ways to value injuries (starters only, usage squared, Out only, practice, clusters)"
+        type: boolean
+        default: false
       skillq:
         description: "Test rating receivers and backs individually (player quality) for the Skill unit"
         type: boolean
@@ -57,6 +61,7 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}   # optional: leave the secret out to skip market capture
           EXPERIMENTS: ${{ inputs.experiments && '1' || '' }}
           BACKTEST: ${{ inputs.backtest && '1' || '' }}
+          INJ_TEST: ${{ inputs.injuries && '1' || '' }}
           SKILLQ: ${{ inputs.skillq && '1' || '' }}
           SCHEME_TEST: ${{ inputs.scheme && '1' || '' }}
           RATING_DECAY: ${{ vars.RATING_DECAY || '1.0' }}     # set as repository variables only after the experiment shows a clear gain

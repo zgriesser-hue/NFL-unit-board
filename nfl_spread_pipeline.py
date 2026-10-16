@@ -68,6 +68,7 @@ EXTRA_FEATS = os.environ.get("EXTRA_FEATS", "") == "1"        # add offensive ru
 SCHEME_TEST = os.environ.get("SCHEME_TEST", "") == "1"            # test: defensive scheme (blitz, man/zone, two-high) matched against how each offense handles it
 SKILLQ = os.environ.get("SKILLQ", "") == "1"                      # test: rate receivers/backs individually and build the Skill unit from the expected lineup
 BACKTEST = os.environ.get("BACKTEST", "") == "1"                  # deeper backtest of completion % over expected and success rate
+INJ_TEST = os.environ.get("INJ_TEST", "") == "1"                  # test: other ways to value injuries (starters only, usage squared, Out only, practice, clusters)
 EXPERIMENTS = os.environ.get("EXPERIMENTS", "") == "1"        # run the side-by-side test of the variants above (slower)
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(BOARD_DIR, exist_ok=True)
@@ -350,10 +351,16 @@ known, qb_post, qb_name, qb_actual = qb_tables(K_QB)
 tg["qb_pre"] = qb_actual.reindex(pd.MultiIndex.from_arrays([tg["game_id"], tg["team"]])).fillna(QB_PRIOR).values
 
 # ================================================================== stage 5: injuries (burden = status weight x recent snap share)
-def build_injury_burden():
+_INJ_RAW = {}
+def build_injury_burden(variant=None):
+    """variant (experiments only): None = the production valuation (status weight x recent snap share); "starters" counts only
+    players with a 50%+ snap share; "usage_sq" squares the snap share; "out_only" ignores Questionable; "practice" weights
+    Questionable by practice participation."""
     seasons = range(PBP_FROM, LAST_SEASON + 1)
-    inj = load_years(nfl.load_injuries, seasons, "injuries")
-    snap = load_years(nfl.load_snap_counts, seasons, "snap counts")
+    if not _INJ_RAW:
+        _INJ_RAW["inj"] = load_years(nfl.load_injuries, seasons, "injuries")
+        _INJ_RAW["snap"] = load_years(nfl.load_snap_counts, seasons, "snap counts")
+    inj, snap = _INJ_RAW["inj"].copy(), _INJ_RAW["snap"].copy()
     for df in (inj, snap):
         df.dropna(subset=["season", "week"], inplace=True)
         df["season"], df["week"] = df["season"].astype(int), df["week"].astype(int)
@@ -377,7 +384,7 @@ def build_injury_burden():
     inj["name"] = inj["full_name"].map(norm)
     inj["order"] = inj["season"] * 100 + inj["week"]
     inj["w"] = inj["report_status"].map({"Out": 1.0, "Doubtful": 0.85, "Questionable": 0.25}).fillna(0.0)
-    if INJ_PRACTICE and "practice_status" in inj:
+    if (INJ_PRACTICE or variant == "practice") and "practice_status" in inj:
         # share of regular contributors who actually missed the game, 2019-23: Questionable + Full 21%, Limited 36%, Did Not Participate 58%
         pw = {"Full Participation in Practice": 0.21, "Limited Participation in Practice": 0.36,
               "Did Not Participate In Practice": 0.58}
@@ -392,7 +399,14 @@ def build_injury_burden():
              "CB": "DB", "S": "DB", "FS": "DB", "SS": "DB", "DB": "DB", "WR": "WR", "TE": "TE", "RB": "RB", "FB": "RB"}
     mm["grp"] = mm["position"].map(group) if "position" in mm else np.nan
     mm = mm.dropna(subset=["grp"])
-    mm["val"] = mm["w"] * mm["roll3"].fillna(0.0)
+    use = mm["roll3"].fillna(0.0)
+    if variant == "starters":
+        use = (use >= 0.5).astype(float)
+    elif variant == "usage_sq":
+        use = use ** 2
+    elif variant == "out_only":
+        mm["w"] = mm["w"].where(mm["w"] >= 0.85, 0.0)
+    mm["val"] = mm["w"] * use
     return mm.groupby(["season", "week", "team", "grp"])["val"].sum().unstack(fill_value=0).reset_index()
 
 ip = f"{OUT}/injury_burden{'_practice' if INJ_PRACTICE else ''}.csv"
@@ -719,6 +733,75 @@ def run_experiments():
 
 if EXPERIMENTS and len(r):
     run_experiments()
+
+def run_injury_tests():
+    """Does a different injury valuation beat the current one out of sample? Same ridge model, same games, only the injury
+    features change (all variants use the final report, like the baseline). + = better than the current model."""
+    inj_cols = [i[0] for i in INJ]
+    rest = [x[0] for x in SPEC] + CONT_NAMES + CTX
+
+    def with_burden(bv):
+        Fv = F.drop(columns=[f"{sd}_{g}" for sd in ("home", "away") for g in GR if f"{sd}_{g}" in F]).copy()
+        gcols = [c for c in bv.columns if c not in ("season", "week", "team")]
+        for sd in ("home", "away"):
+            bb = bv.rename(columns={g: f"{sd}_{g}" for g in gcols}).rename(columns={"team": f"{sd}_team"})
+            Fv = Fv.merge(bb, on=["season", "week", f"{sd}_team"], how="left")
+        for g in gcols:
+            for sd in ("home", "away"):
+                Fv[f"{sd}_{g}"] = Fv[f"{sd}_{g}"].fillna(0.0)
+        for name, unit, groups in INJ:
+            Fv[name] = -sum(Fv[f"home_{g}"] - Fv[f"away_{g}"] for g in groups if f"home_{g}" in Fv)
+        return Fv, gcols
+
+    def oos(Fv, feats):
+        errs = []
+        for sn in TEST_SEASONS:
+            tr = Fv[(Fv["season"] < sn) & Fv["home_margin"].notna()]
+            te = Fv[(Fv["season"] == sn) & Fv["game_id"].isin(ok)]
+            errs.append(np.abs(te[feats].values @ fit(tr, feats).values - te["home_margin"].values))
+        return np.concatenate(errs)
+
+    print("\nINJURY VALUATION TESTS, out-of-sample", TEST_SEASONS, "(average miss vs actual margin; lower is better)")
+    cur = None
+    cache = {}
+    variants = [("current (status weight x recent snap share)", None, []),
+                ("starters only (50%+ snap share counts fully)", "starters", []),
+                ("usage squared (depth players count less)", "usage_sq", []),
+                ("Out/Doubtful only (Questionable ignored)", "out_only", []),
+                ("Questionable weighted by practice participation", "practice", []),
+                ("current + O-line cluster (several linemen out hurts more)", None, ["ol_cluster"]),
+                ("current + team-wide burden (many injuries at once)", None, ["team_total"]),
+                ("current + both cluster terms", None, ["ol_cluster", "team_total"])]
+    for label, var, extras in variants:
+        try:
+            if var not in cache:
+                cache[var] = build_injury_burden(var)
+            Fv, gcols = with_burden(cache[var])
+            feats = [x for x in rest if x in Fv] + inj_cols
+            if "ol_cluster" in extras and "OL" in gcols:
+                Fv["ol_cluster"] = -(Fv["home_OL"] ** 2 - Fv["away_OL"] ** 2)
+                feats.append("ol_cluster")
+            if "team_total" in extras:
+                oth = [g for g in gcols if g != "QB"]
+                Fv["team_total"] = -(sum(Fv[f"home_{g}"] for g in oth) - sum(Fv[f"away_{g}"] for g in oth))
+                feats.append("team_total")
+            Fv[feats] = Fv[feats].fillna(0.0)
+            e = oos(Fv, feats)
+        except Exception as ex:
+            print(f"  {label:<62} skipped ({str(ex)[:70]})")
+            continue
+        if cur is None:
+            cur = e
+            print(f"  {label:<62} {e.mean():.3f}   ({len(e)} games)")
+            continue
+        d = cur - e
+        ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+        verdict = "clear gain" if d.mean() - ci > 0 else ("worse" if d.mean() + ci < 0 else "within noise")
+        print(f"  {label:<62} {e.mean():.3f}   change {d.mean():+.3f} +/- {ci:.3f}  {verdict}")
+    print("  (adopt a variant only when it is a clear gain; otherwise the current valuation stays)")
+
+if INJ_TEST and len(r):
+    run_injury_tests()
 
 # ---- deeper backtest of the two most promising candidates: completion % over expected and success rate.
 # Season by season, early vs late weeks, share of games improved, and the weights the model actually gives them.
