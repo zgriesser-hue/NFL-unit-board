@@ -594,9 +594,9 @@ for side in ("home", "away"):
 for name, unit, groups in INJ:                                   # + = home LESS hurt than away
     F[name] = -sum(F[f"home_{g}"].fillna(0.0) - F[f"away_{g}"].fillna(0.0) for g in groups if f"home_{g}" in F)
 # what was KNOWN on Monday: each team's most recent injury report from an earlier week of the same season (this week's report does not exist yet)
-_bo = bur.assign(order=bur["season"] * 100 + bur["week"]).sort_values("order")
+_bo = bur.assign(order=(bur["season"].astype("int64") * 100 + bur["week"].astype("int64"))).sort_values("order")
 for side in ("home", "away"):
-    _q = F[["season", "week", f"{side}_team"]].assign(order=F["season"] * 100 + F["week"], _i=np.arange(len(F))).sort_values("order")
+    _q = F[["season", "week", f"{side}_team"]].assign(order=(F["season"].astype("int64") * 100 + F["week"].astype("int64")), _i=np.arange(len(F))).sort_values("order")
     _b = _bo.rename(columns={g: f"prev_{side}_{g}" for g in GR}).rename(columns={"team": f"{side}_team", "season": "bseason"}).drop(columns="week")
     _m = pd.merge_asof(_q, _b, on="order", by=f"{side}_team", allow_exact_matches=False, direction="backward").sort_values("_i")
     _same = (_m["bseason"].values == F["season"].values)
