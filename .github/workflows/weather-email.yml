@@ -1,8 +1,8 @@
 name: nfl-weather-email
 
 # Emails a game-by-game weather report for the NFL games still to be played: Thursday afternoon and Saturday night (US Eastern).
-# Needs two repository secrets: GMAIL_USER (sending Gmail address) and GMAIL_APP_PASSWORD (a Google app password).
-# Optional secret WEATHER_EMAIL_TO sends it somewhere else (default: to GMAIL_USER). Run by hand: Actions > nfl-weather-email > Run workflow.
+# Needs two repository secrets: EMAIL_USER (sending Gmail address) and EMAIL_APP_PASSWORD (a Google app password); GMAIL_USER / GMAIL_APP_PASSWORD also work.
+# Optional secret EMAIL_TO (or WEATHER_EMAIL_TO) sends it somewhere else (default: to the sending address). Run by hand: Actions > nfl-weather-email > Run workflow.
 on:
   schedule:
     - cron: "0 19 * * 4"    # Thursday 19:00 UTC (3pm ET until early November, 2pm after)
@@ -29,9 +29,9 @@ jobs:
         run: pip install pandas requests
       - name: Build and email the weather report
         env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          WEATHER_EMAIL_TO: ${{ secrets.WEATHER_EMAIL_TO }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER || secrets.EMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD || secrets.EMAIL_APP_PASSWORD }}
+          WEATHER_EMAIL_TO: ${{ secrets.WEATHER_EMAIL_TO || secrets.EMAIL_TO }}
         run: python -u weather_report.py
       - name: Commit the report
         if: always()
