@@ -1,0 +1,48 @@
+name: nfl-weather-email
+
+# Emails a game-by-game weather report for the NFL games still to be played: Thursday afternoon and Saturday night (US Eastern).
+# Needs two repository secrets: GMAIL_USER (sending Gmail address) and GMAIL_APP_PASSWORD (a Google app password).
+# Optional secret WEATHER_EMAIL_TO sends it somewhere else (default: to GMAIL_USER). Run by hand: Actions > nfl-weather-email > Run workflow.
+on:
+  schedule:
+    - cron: "0 19 * * 4"    # Thursday 19:00 UTC (3pm ET until early November, 2pm after)
+    - cron: "0 1 * * 0"     # Sunday 01:00 UTC = Saturday 9pm ET (8pm after the clocks change)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nfl-weather-email
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install packages
+        run: pip install pandas requests
+      - name: Build and email the weather report
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          WEATHER_EMAIL_TO: ${{ secrets.WEATHER_EMAIL_TO }}
+        run: python -u weather_report.py
+      - name: Commit the report
+        if: always()
+        run: |
+          git config user.name "nfl-bot"
+          git config user.email "nfl-bot@users.noreply.github.com"
+          git add boards/weather_report_latest.md 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "weather report $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3 4; do
+            git pull --rebase -X theirs origin ${{ github.ref_name }} && git push && exit 0
+            sleep 5
+          done
+          exit 1
