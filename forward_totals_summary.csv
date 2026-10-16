@@ -1,9 +1,49 @@
 slot,basis,subset,edge_at_least,games,bets,win_rate,win_se,roi_at_110,avg_clv_pts,moved_toward_pct
-Mon,consensus,all games,0,1,1,0.0,0.5,-1.0,-1.0,0.0
-Mon,consensus,all games,1,1,1,0.0,0.5,-1.0,-1.0,0.0
-Mon,consensus,all games,2,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,consensus,all games,0,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
+Mon,consensus,all games,1,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
+Mon,consensus,all games,2,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
 Mon,consensus,all games,3,0,0,,,,,
-Mon,consensus,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,-1.0,0.0
-Mon,consensus,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,-1.0,0.0
-Mon,consensus,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,-1.0,0.0
+Thu,consensus,all games,0,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,all games,1,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,all games,2,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,all games,3,0,0,,,,,
+Wed,consensus,all games,0,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,all games,1,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,all games,2,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,all games,3,0,0,,,,,
+Mon,consensus,no QB CHECK/override,0,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
+Mon,consensus,no QB CHECK/override,1,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
+Mon,consensus,no QB CHECK/override,2,2,2,0.0,0.3535533905932738,-1.0,-0.75,0.0
 Mon,consensus,no QB CHECK/override,3,0,0,,,,,
+Thu,consensus,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,0.0,
+Thu,consensus,no QB CHECK/override,3,0,0,,,,,
+Wed,consensus,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,0.0,
+Wed,consensus,no QB CHECK/override,3,0,0,,,,,
+Mon,draftkings,all games,0,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,draftkings,all games,1,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,draftkings,all games,2,0,0,,,,,
+Mon,draftkings,all games,3,0,0,,,,,
+Thu,draftkings,all games,0,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,all games,1,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,all games,2,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,all games,3,0,0,,,,,
+Wed,draftkings,all games,0,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,all games,1,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,all games,2,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,all games,3,0,0,,,,,
+Mon,draftkings,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,draftkings,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,-1.0,0.0
+Mon,draftkings,no QB CHECK/override,2,0,0,,,,,
+Mon,draftkings,no QB CHECK/override,3,0,0,,,,,
+Thu,draftkings,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,0.0,
+Thu,draftkings,no QB CHECK/override,3,0,0,,,,,
+Wed,draftkings,no QB CHECK/override,0,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,no QB CHECK/override,1,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,no QB CHECK/override,2,1,1,0.0,0.5,-1.0,0.0,
+Wed,draftkings,no QB CHECK/override,3,0,0,,,,,
