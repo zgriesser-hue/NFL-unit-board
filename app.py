@@ -63,6 +63,30 @@ def load_csv(name, index_col=None):
     return pd.read_csv(p, index_col=index_col) if os.path.exists(p) else None
 
 
+def _wilson(w, n):
+    """95% range for a win rate of w over n bets (Wilson interval), as text like '38%-71%'."""
+    if not n:
+        return ""
+    z = 1.96
+    c = (w + z * z / (2 * n)) / (1 + z * z / n)
+    h = z * np.sqrt(w * (1 - w) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return f"{max(c - h, 0) * 100:.0f}%-{min(c + h, 1) * 100:.0f}%"
+
+
+def _show_checks(kinds=None):
+    """Warnings from board_checks.py (stale board, missing lines, injuries not in, QB to confirm...)."""
+    ck = load_csv("boards/board_checks_latest.csv")
+    if ck is None or ck.empty:
+        return
+    w = ck[ck["level"] == "WARN"]
+    if kinds:
+        w = w[w["check"].str.contains(kinds)]
+    with st.expander(f"Board checks: {len(w)} to look at" if len(w) else "Board checks: all clear", expanded=bool(len(w))):
+        for _, r in ck.iterrows():
+            (st.warning if r["level"] == "WARN" else st.caption)(f"{r['check']}: {r['detail']}")
+        st.caption(f"Checked {ck['checked_utc'].iloc[0]} UTC. These only say how far the board can be trusted; they do not change any projection.")
+
+
 boards = load_boards()
 st.title("NFL Unit Board")
 
@@ -81,6 +105,7 @@ with tab_week:
     b = boards[key].copy()
     built = pd.to_datetime(b["built_at_utc"].iloc[0], utc=True).tz_convert("America/New_York")
     st.caption(f"Built {built:%a %b %d, %I:%M %p} ET")
+    _show_checks()
     has_mkt = "market_home_spread" in b and b["market_home_spread"].notna().any()
     if not has_mkt:
         st.warning("No market lines on this board.")
@@ -410,10 +435,12 @@ with tab_fwd:
         if summ is not None and len(summ):
             st.subheader("Betting the model side vs the market")
             s = summ.copy()
+            s["95% range"] = [_wilson(w, n) for w, n in zip(s["win_rate"], s["bets"])]
             s["win_rate"] = (s["win_rate"] * 100).round(1).astype(str) + "%"
             s["roi_at_110"] = (s["roi_at_110"] * 100).round(1).astype(str) + "%"
             st.dataframe(s, hide_index=True, use_container_width=True)
-            st.caption("Break-even at -110 is 52.4%. Small samples swing wildly, so wait for many weeks.")
+            st.caption("Break-even at -110 is 52.4%. The 95% range is how far the true win rate could plausibly be from what you see; "
+                       "if it spans 52.4% easily, the sample can't tell skill from luck yet.")
         if "close_home_spread" in games and games["close_home_spread"].notna().any():
             cg = games.dropna(subset=["close_home_spread"])
             st.subheader("Against the closing line")
@@ -424,6 +451,7 @@ with tab_fwd:
             cs = load_csv("boards/forward_test_closing_summary.csv")
             if cs is not None and len(cs):
                 cs = cs.copy()
+                cs["95% range"] = [_wilson(w, n) for w, n in zip(cs["win_rate"], cs["bets"])]
                 cs["win_rate"] = (cs["win_rate"] * 100).round(1).astype(str) + "%"
                 cs["roi_at_110"] = (cs["roi_at_110"] * 100).round(1).astype(str) + "%"
                 st.dataframe(cs, hide_index=True, use_container_width=True)
@@ -700,6 +728,7 @@ with tab_tot:
         built = pd.to_datetime(tb["built_at_utc"].iloc[0], utc=True).tz_convert("America/New_York")
         st.caption(f"Built {built:%a %b %d, %I:%M %p} ET. Totals are in points of combined score; "
                    "edge = model minus market, so a positive edge leans Over.")
+        _show_checks("otals|eather|tale|Missing|Quarterback|Injur")
         tb = tb.copy()
         tb["kickoff"] = pd.to_datetime(tb["kickoff_utc"], utc=True).dt.tz_convert("America/New_York")
         tb = tb.sort_values("kickoff")
@@ -765,8 +794,9 @@ with tab_tot:
             basis = c2.radio("Number", sorted(set(fw["basis"])), horizontal=True, key="fw_basis")
             subset = st.radio("Games", sorted(set(fw["subset"])), horizontal=True, key="fw_subset")
             v = fw[(fw["slot"] == slot) & (fw["basis"] == basis) & (fw["subset"] == subset) & (fw["games"] > 0)]
-            v = v[["edge_at_least", "bets", "win_rate", "roi_at_110", "avg_clv_pts", "moved_toward_pct"]].rename(columns={
-                "edge_at_least": "Edge at least", "bets": "Bets", "win_rate": "Win %", "roi_at_110": "ROI at -110",
+            v = v.assign(range95=[_wilson(w, n) if pd.notna(w) else "" for w, n in zip(v["win_rate"], v["bets"])])
+            v = v[["edge_at_least", "bets", "win_rate", "range95", "roi_at_110", "avg_clv_pts", "moved_toward_pct"]].rename(columns={
+                "edge_at_least": "Edge at least", "bets": "Bets", "win_rate": "Win %", "range95": "95% range", "roi_at_110": "ROI at -110",
                 "avg_clv_pts": "CLV pts", "moved_toward_pct": "Line moved toward model"})
             st.dataframe(v.round(3), hide_index=True, use_container_width=True)
             st.caption("Win % and ROI bet the model's side at the number the board saw (about 52.4% is break-even at -110). "
