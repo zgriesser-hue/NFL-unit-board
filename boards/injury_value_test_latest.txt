@@ -1,0 +1,11 @@
+
+INJURY VALUATION TESTS, out-of-sample [2023, 2024, 2025] (average miss vs actual margin; lower is better)
+  current (status weight x recent snap share)                    10.102   (813 games)
+  starters only (50%+ snap share counts fully)                   10.115   change -0.013 +/- 0.048  within noise
+  usage squared (depth players count less)                       10.096   change +0.006 +/- 0.034  within noise
+  Out/Doubtful only (Questionable ignored)                       10.107   change -0.005 +/- 0.038  within noise
+  Questionable weighted by practice participation                10.096   change +0.006 +/- 0.023  within noise
+  current + O-line cluster (several linemen out hurts more)      10.109   change -0.006 +/- 0.007  within noise
+  current + team-wide burden (many injuries at once)             10.105   change -0.003 +/- 0.006  within noise
+  current + both cluster terms                                   10.106   change -0.004 +/- 0.006  within noise
+  (adopt a variant only when it is a clear gain; otherwise the current valuation stays)
