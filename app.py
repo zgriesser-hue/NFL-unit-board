@@ -845,18 +845,18 @@ with tab_cfb:
                               "Model likes": cb.apply(_bet, axis=1),
                               "Market": [_side(m, x) for m, x in zip(cb["matchup"], cb["line_home_by"])],
                               "Model": [_side(m, x) for m, x in zip(cb["matchup"], cb["proj_home_by"])],
-                              "Edge": cb["spread_edge"].abs().round(1), "Half edge": (cb["spread_blend_edge"].abs()).round(1),
+                              "Edge": cb["spread_edge"].abs().round(1),
                               "Watch": cb["caution"].fillna("")})
         else:
             v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"],
                               "Model likes": [f"{p} {l:g}" if p and pd.notna(l) else "" for p, l in zip(cb["total_pick"], cb["line_total"])],
                               "Market": cb["line_total"], "Model": cb["proj_total"],
-                              "Edge": cb["total_edge"].abs().round(1), "Half edge": cb["total_blend_edge"].abs().round(1),
+                              "Edge": cb["total_edge"].abs().round(1),
                               "Watch": cb["caution"].fillna("")})
         v = v.dropna(subset=["Edge"])
         v = v.reindex(v["Edge"].abs().sort_values(ascending=False).index)
         st.dataframe(v, hide_index=True, use_container_width=True)
-        st.caption("Model likes = the side the model would bet, at the market's number (for example 'Houston -4.75' means Houston giving 4.75 points; 'Oklahoma State +4.75' means getting them). Market and Model show the favorite and the margin each one expects. Edge = how many points the model and market disagree. Half edge = the edge if you split the difference between the model and the market, a more cautious read. "
+        st.caption("Model likes = the side the model would bet, at the market's number (for example 'Houston -4.75' means Houston giving 4.75 points; 'Oklahoma State +4.75' means getting them). Market and Model show the favorite and the margin each one expects. Edge = how many points the model and market disagree."
                    "Watch = a team with few games this season or a rating far from last year's, where the model is least reliable. "
                    "Lines for later games are early numbers and still move.")
     if cg is not None and not cg.empty:
