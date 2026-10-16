@@ -593,6 +593,15 @@ for side in ("home", "away"):
     F = F.merge(bb, on=["season", "week", f"{side}_team"], how="left")
 for name, unit, groups in INJ:                                   # + = home LESS hurt than away
     F[name] = -sum(F[f"home_{g}"].fillna(0.0) - F[f"away_{g}"].fillna(0.0) for g in groups if f"home_{g}" in F)
+# what was KNOWN on Monday: each team's most recent injury report from an earlier week of the same season (this week's report does not exist yet)
+_bo = bur.assign(order=bur["season"] * 100 + bur["week"]).sort_values("order")
+for side in ("home", "away"):
+    _q = F[["season", "week", f"{side}_team"]].assign(order=F["season"] * 100 + F["week"], _i=np.arange(len(F))).sort_values("order")
+    _b = _bo.rename(columns={g: f"prev_{side}_{g}" for g in GR}).rename(columns={"team": f"{side}_team", "season": "bseason"}).drop(columns="week")
+    _m = pd.merge_asof(_q, _b, on="order", by=f"{side}_team", allow_exact_matches=False, direction="backward").sort_values("_i")
+    _same = (_m["bseason"].values == F["season"].values)
+    for g in GR:
+        F[f"prev_{side}_{g}"] = np.where(_same, _m[f"prev_{side}_{g}"].fillna(0.0).values, 0.0)
 for name, unit, pos, col in CONT_DEF:                                # + = home lineup MORE continuous than away's
     if name in CONT_NAMES:
         h = cont_lookup(CONT_TAB[name], F["season"], F["week"], F["home_team"])
@@ -624,6 +633,7 @@ TEAM_ABBR = {
 ok = set(F[F["season"].isin(TEST_SEASONS) & F["home_margin"].notna() & F["mkt_open"].notna()
            & F["mkt_close"].notna()]["game_id"])
 rows = []
+RHO_LOG = {}
 for s in TEST_SEASONS:
     tr = F[(F["season"] < s) & F["home_margin"].notna()]
     te = F[F["season"] == s].copy()
@@ -635,6 +645,18 @@ for s in TEST_SEASONS:
     _tm["qb_swap"] = 0.0
     _tm["qb_rating"] = _tm["qb_known"]
     te["pred_mon"] = _tm[ALL].values @ _w.values
+    _tm2 = _tm.copy()                                            # Monday + last report carried forward at the rate such injuries usually last (learned on earlier seasons only)
+    _trn = F[(F["season"] < s) & (F["week"] > 1)]
+    _rho = {}
+    for _g in GR:
+        _x = (_trn[f"prev_home_{_g}"].values.tolist() + _trn[f"prev_away_{_g}"].values.tolist())
+        _y = (_trn[f"home_{_g}"].fillna(0.0).values.tolist() + _trn[f"away_{_g}"].fillna(0.0).values.tolist())
+        _x, _y = np.array(_x), np.array(_y)
+        _rho[_g] = float((_x * _y).sum() / max((_x * _x).sum(), 1e-9))
+    for _n, _u, _grp in INJ:
+        _tm2[_n] = -sum(_rho[_g] * (te[f"prev_home_{_g}"] - te[f"prev_away_{_g}"]) for _g in _grp if _g in _rho)
+    te["pred_mon2"] = _tm2[ALL].values @ _w.values
+    RHO_LOG[s] = _rho
     _th = te.copy()                                              # hybrid: injuries as finally reported, but the PREVIOUS starter at QB
     _th["qb_swap"] = 0.0
     _th["qb_rating"] = _th["qb_known"]
@@ -1114,12 +1136,26 @@ if len(r) and os.path.exists(f"{ODDS_DIR}/game_lines.csv"):
         if n:
             wr = float((np.sign(edge[sel]) == np.sign(cover[sel])).mean())
             print(f"    |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {wr * 100 / 110 - (1 - wr):+.1%}")
+    print("  OPENER-TIMED model WITH KNOWN INJURIES (Monday noon, plus the most recent injury report carried forward at its usual persistence):")
+    print(f"    average miss: model {mae(r['pred_mon2'], hm):.3f} | no-injury Monday model {mae(r['pred_mon'], hm):.3f} | opener {mae(r['mkt_open'], hm):.3f}")
+    _dd = np.abs(r["pred_mon"] - hm) - np.abs(r["pred_mon2"] - hm)
+    print(f"    change vs the no-injury Monday model {_dd.mean():+.3f} +/- {1.96 * _dd.std(ddof=1) / np.sqrt(len(_dd)):.3f} (+ = better)")
+    _r0 = RHO_LOG[TEST_SEASONS[-1]]
+    print("    share of last report's injury burden still present this week, by position group (learned before " + str(TEST_SEASONS[-1]) + "): "
+          + ", ".join(f"{g} {v:.2f}" for g, v in _r0.items()))
+    edge, cover = r["pred_mon2"] - r["mkt_open"], hm - r["mkt_open"]
+    for thr in [0, 1, 2, 3, 4]:
+        sel = (edge.abs() >= thr) & (cover != 0)
+        n = int(sel.sum())
+        if n:
+            wr = float((np.sign(edge[sel]) == np.sign(cover[sel])).mean())
+            print(f"    |edge| >= {thr}: {n} bets, win {wr:.1%} (+/- {np.sqrt(0.25 / n):.1%}), ROI {wr * 100 / 110 - (1 - wr):+.1%}")
     lean2 = r["pred_mon"] - r["mkt_open"]
     big2 = (mv.abs() >= 1) & (lean2.abs() >= 0.5)
     if big2.sum() > 30:
         print(f"    line movement: leaned the move's way {float((np.sign(lean2[big2]) == np.sign(mv[big2])).mean()):.1%} of the time "
               f"({int(big2.sum())} games); correlation {float(np.corrcoef(lean2, mv)[0, 1]):+.3f}")
-    keep = ["game_id", "season", "week", "home_team", "away_team", "home_margin", "pred", "pred_mon", "mkt_open", "mkt_close"]
+    keep = ["game_id", "season", "week", "home_team", "away_team", "home_margin", "pred", "pred_mon", "pred_mon2", "mkt_open", "mkt_close"]
     r[[c for c in keep if c in r]].to_csv(f"{OUT}/oos_predictions.csv", index=False)
     log(f"saved oos_predictions.csv ({len(r)} test games) to {OUT}")
 
