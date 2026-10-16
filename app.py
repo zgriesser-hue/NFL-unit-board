@@ -756,6 +756,22 @@ with tab_tot:
                              hide_index=True, use_container_width=True)
                 st.caption("Over/under record when the model disagrees with the closing total. About 52.4% wins is break-even at -110.")
 
+        gl = load_csv("data/game_lines.csv")
+        if gl is not None and {"total_close", "total_pts", "home_team", "season"}.issubset(gl.columns):
+            st.subheader("Retractable-roof home games vs the closing total")
+            g = gl[gl["total_close"].notna() & gl["total_pts"].notna() & (gl["game_type"] == "REG")].copy()
+            g["Over by"] = g["total_pts"] - g["total_close"]
+            g["Group"] = g["home_team"].isin(["ARI", "ATL", "DAL", "HOU", "IND"]).map({True: "Retractable-roof home", False: "All other games"})
+            def _sum(x):
+                n = int((x != 0).sum())
+                return pd.Series({"Games": len(x), "Avg points over close": round(x.mean(), 2),
+                                  "Over %": round(float((x > 0).sum() / n), 3) if n else None})
+            t = g.groupby(["season", "Group"])["Over by"].apply(_sum).unstack().reset_index().rename(columns={"season": "Season"})
+            t["Season"] = t["Season"].astype(int)
+            st.dataframe(t.sort_values(["Season", "Group"], ascending=[False, True]), hide_index=True, use_container_width=True)
+            st.caption("Actual total minus the closing total (positive = went over). Since 2020 these stadiums have gone over by about 3 points "
+                       "more than the market expects, but the Over % is only about 53% (break-even is 52.4%), so treat it as a mild lean, not a bet by itself.")
+
         fw = load_csv("forward_totals_summary.csv")
         if fw is not None and not fw.empty:
             st.subheader("Forward test (real boards, graded after the games)")
