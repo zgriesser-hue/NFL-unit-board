@@ -30,8 +30,8 @@ STADIUMS = {
     "MIN": (44.9738, -93.2577), "NE": (42.0909, -71.2643), "NO": (29.9511, -90.0812), "NYG": (40.8135, -74.0745),
     "NYJ": (40.8135, -74.0745), "PHI": (39.9008, -75.1675), "PIT": (40.4468, -80.0158), "SF": (37.4030, -121.9697),
     "SEA": (47.5952, -122.3316), "TB": (27.9759, -82.5033), "TEN": (36.1665, -86.7713), "WAS": (38.9076, -76.8645)}
-DOMES = {"ATL", "DET", "LV", "MIN", "NO", "LA", "LAC"}            # fixed roof or canopy: weather does not matter
-RETRACTABLE = {"ARI", "DAL", "HOU", "IND"}                          # roof is usually closed in bad weather; check before kickoff
+DOMES = {"DET", "LV", "MIN", "NO", "LA", "LAC"}            # fixed roof or canopy: weather does not matter
+RETRACTABLE = {"ARI", "ATL", "DAL", "HOU", "IND"}                          # roof is usually closed in bad weather; check before kickoff
 SKY = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "fog", 51: "light drizzle", 53: "drizzle",
        55: "heavy drizzle", 56: "freezing drizzle", 57: "freezing drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
        66: "freezing rain", 67: "freezing rain", 71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains",
