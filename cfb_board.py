@@ -33,7 +33,7 @@ def main():
     g = P.load(P.DATA)
     played = g[g["played"]]
     ok = played.dropna(subset=["spread_close"])
-    sign = 1.0 if np.corrcoef(-ok["spread_close"], ok["home_pts"] - ok["away_pts"])[0, 1] > 0 else -1.0
+    sign = P.market_sign(played)
     for c in ("spread_close", "spread_open"):
         g[c] = g[c] * -sign          # now: positive = home favored by that many points
     dm, em = P.history(g, PM, engine=True)

@@ -39,6 +39,17 @@ def log(m):
     print(m, flush=True)
 
 
+def market_sign(played):
+    """+1 if the feed's home spread is negative when the home team is favored (so -spread predicts the margin), else -1.
+    Stops the run when the relationship is too weak to trust: a wrong sign would silently invert every projection."""
+    ok = played.dropna(subset=["spread_close"])
+    c = float(np.corrcoef(-ok["spread_close"], ok["home_pts"] - ok["away_pts"])[0, 1])
+    if abs(c) < 0.4:
+        raise SystemExit(f"Spread sign check failed: correlation of the market spread with results is only {c:+.2f} (expected about +/-0.6). "
+                         "The line feed may have changed format; check cfb_fetch.py before trusting any board.")
+    return 1.0 if c > 0 else -1.0
+
+
 # ------------------------------------------------------------------ data
 def conf_tier(conf, team):
     c = str(conf)
@@ -55,6 +66,10 @@ def load(root_data):
         cls = g[f"{s}_class"].astype(str).str.lower()
         g[f"{s}_fbs"] = cls.str.contains("fbs") | cls.isin(["nan", "none"])
     g = g[g["home_fbs"] & g["away_fbs"] & g["date"].notna()].copy()
+    _unk = g[g["home_class"].isna() | g["away_class"].isna()]
+    if len(_unk):
+        _t = pd.concat([_unk.loc[_unk["home_class"].isna(), "home"], _unk.loc[_unk["away_class"].isna(), "away"]]).value_counts()
+        print(f"  note: {len(_unk)} kept games have a team with no division label (treated as FBS): " + ", ".join(f"{k} ({v})" for k, v in _t.head(8).items()), flush=True)
     g["neutral"] = g["neutral"].astype(str).str.lower().isin(["true", "1"]).astype(float)
     g["played"] = g["home_pts"].notna() & g["away_pts"].notna()
     for s in ("home", "away"):
@@ -326,7 +341,7 @@ def main():
     log(f"{len(played)} played FBS-vs-FBS games, seasons {int(played['season'].min())}-{int(played['season'].max())}; {have('spread_close')} with a closing spread, "
         f"{have('total_close')} with a closing total, {have('h_plays')} with pace and efficiency stats, {have('wind_mph') + int((played['indoor'] == 1).sum())} with weather")
     ok = played.dropna(subset=["spread_close"])
-    sign = 1.0 if np.corrcoef(-ok["spread_close"], ok["home_pts"] - ok["away_pts"])[0, 1] > 0 else -1.0
+    sign = market_sign(played)
     log(f"market spread sign check: home spread is {'negative when the home team is favored (as expected)' if sign > 0 else 'POSITIVE when the home team is favored; flipped'}")
     for c in ("spread_close", "spread_open"):
         g[c] = g[c] * -sign
