@@ -88,12 +88,10 @@ def main():
         pt = float(mt.predict(pd.DataFrame([ft]))[0])
         sp, tl = r.spread_close, r.total_close
         rows.append({"week": r.week, "date": r.date.date(), "matchup": f"{r.away} at {r.home}", "type": r.matchup,
-                     "line_home_by": sp, "proj_home_by": round(pm, 1),
+                     "line_home_by": sp, "open_home_by": r.spread_open, "open_total": r.total_open, "proj_home_by": round(pm, 1),
                      "spread_edge": round(pm - sp, 1) if pd.notna(sp) else np.nan,
-                     "spread_blend_edge": round((pm - sp) / 2, 1) if pd.notna(sp) else np.nan,
                      "spread_pick": ("" if pd.isna(sp) else (f"{r.home}" if pm > sp else f"{r.away}")),
                      "line_total": tl, "proj_total": round(pt, 1), "total_edge": round(pt - tl, 1) if pd.notna(tl) else np.nan,
-                     "total_blend_edge": round((pt - tl) / 2, 1) if pd.notna(tl) else np.nan,
                      "caution": "; ".join(x for x in (note(r.home), note(r.away)) if x),
                      "total_pick": ("" if pd.isna(tl) else ("Over" if pt > tl else "Under"))})
     b = pd.DataFrame(rows).sort_values(["date", "matchup"])
