@@ -723,6 +723,9 @@ def main():
     print(model.coef.round(2).to_string())
 
     up = todo[todo["week"] == wk].copy()
+    if os.environ.get("TOT_RETRACTABLE", "1") != "0":     # roofs were closed in 77-94% of home games; coding them indoor beat waiting for a forecast
+        ret = up["home_team"].isin(["ARI", "ATL", "DAL", "HOU", "IND"]) & (up["neutral"] == 0)
+        up.loc[ret, "roof"] = "closed"
     for side, col in [("h", "home_team"), ("a", "away_team")]:
         for c in RATE_COLS:
             up[f"{side}_{c}"] = up[col].map(lambda t, c=c: cur.get((t, c), np.nan))
