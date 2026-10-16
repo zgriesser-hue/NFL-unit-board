@@ -87,6 +87,27 @@ def _show_checks(kinds=None):
         st.caption(f"Checked {ck['checked_utc'].iloc[0]} UTC. These only say how far the board can be trusted; they do not change any projection.")
 
 
+_MOVES = {}
+
+
+def _load_moves():
+    mv = load_csv("boards/line_moves_latest.csv")
+    if mv is not None and not mv.empty:
+        _MOVES.update({r["game_id"]: r for _, r in mv.iterrows()})
+
+
+def _move_text(move, edge, up_label, down_label, thr, first_seen=None):
+    """'KC +2.5 (model against)': which way the line moved and whether the model leaned the same way. Empty when the move is small."""
+    if move is None or pd.isna(move) or abs(move) < thr:
+        return ""
+    label = up_label if move > 0 else down_label
+    txt = f"{label} {abs(move):.1f}"
+    if edge is not None and pd.notna(edge) and abs(edge) >= 0.05:
+        txt += " (model agrees)" if np.sign(edge) == np.sign(move) else " (model against)"
+    return txt
+
+
+_load_moves()
 boards = load_boards()
 st.title("NFL Unit Board")
 
@@ -121,6 +142,9 @@ with tab_week:
         view["Market"] = row_tl(b, "market_home_spread")
         view["Edge"] = b["edge_vs_market"].round(1)
         view["Model side"] = b.apply(pick_text, axis=1)
+        if _MOVES and key == keys[0]:
+            view["Line move"] = [_move_text(_MOVES.get(g, {}).get("spread_move"), e, h, a, 1.5)
+                                 for g, e, h, a in zip(b["game_id"], b["edge_vs_market"], b["home_team"], b["away_team"])]
         if "fair_at_market_weights" in b:
             view["At mkt wts"] = row_tl(b, "fair_at_market_weights")
             view["Not in data"] = b["market_minus_mkt_weighted"].round(1)
@@ -740,6 +764,9 @@ with tab_tot:
             "Edge": tb["edge_vs_market"].round(1),
             "Lean": tb["lean"].fillna(""),
         })
+        if _MOVES:
+            tv["Line move"] = [_move_text(_MOVES.get(g, {}).get("total_move"), e, "Total up", "Total down", 2.0)
+                               for g, e in zip(tb["game_id"], tb["edge_vs_market"])]
         if "shop_line" in tb:
             # best number at any book for the lean side, e.g. "Over 42 (-112) BetRivers"
             def _shop(x):
@@ -846,18 +873,23 @@ with tab_cfb:
                               "Market": [_side(m, x) for m, x in zip(cb["matchup"], cb["line_home_by"])],
                               "Model": [_side(m, x) for m, x in zip(cb["matchup"], cb["proj_home_by"])],
                               "Edge": cb["spread_edge"].abs().round(1),
+                              "Line move": [_move_text((x - o) if pd.notna(x) and pd.notna(o) else None, e, m.split(" at ", 1)[1], m.split(" at ", 1)[0], 1.5)
+                                            for m, x, o, e in zip(cb["matchup"], cb["line_home_by"], cb["open_home_by"], cb["spread_edge"])] if "open_home_by" in cb else "",
                               "Watch": cb["caution"].fillna("")})
         else:
             v = pd.DataFrame({"Game": cb["matchup"], "Date": cb["date"],
                               "Model likes": [f"{p} {l:g}" if p and pd.notna(l) else "" for p, l in zip(cb["total_pick"], cb["line_total"])],
                               "Market": cb["line_total"], "Model": cb["proj_total"],
                               "Edge": cb["total_edge"].abs().round(1),
+                              "Line move": [_move_text((x - o) if pd.notna(x) and pd.notna(o) else None, e, "Total up", "Total down", 2.0)
+                                            for x, o, e in zip(cb["line_total"], cb["open_total"], cb["total_edge"])] if "open_total" in cb else "",
                               "Watch": cb["caution"].fillna("")})
         v = v.dropna(subset=["Edge"])
         v = v.reindex(v["Edge"].abs().sort_values(ascending=False).index)
         st.dataframe(v, hide_index=True, use_container_width=True)
         st.caption("Model likes = the side the model would bet, at the market's number (for example 'Houston -4.75' means Houston giving 4.75 points; 'Oklahoma State +4.75' means getting them). Market and Model show the favorite and the margin each one expects. Edge = how many points the model and market disagree."
                    "Watch = a team with few games this season or a rating far from last year's, where the model is least reliable. "
+                   "Line move = how far the line has moved since it opened (only shown for big moves); a move is usually news the model does not have, so 'model against' is the least trustworthy kind of edge. "
                    "Lines for later games are early numbers and still move.")
     if cg is not None and not cg.empty:
         st.subheader("How it is doing this season")

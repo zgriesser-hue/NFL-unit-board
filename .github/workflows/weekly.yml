@@ -84,6 +84,10 @@ jobs:
         run: python scheme_profiles.py
 
 
+      - name: Line moves since the first board
+        continue-on-error: true
+        run: python line_moves.py
+
       - name: Check the boards
         continue-on-error: true
         run: python board_checks.py

@@ -1,68 +1,68 @@
-week,date,matchup,type,line_home_by,proj_home_by,spread_edge,spread_pick,line_total,proj_total,total_edge,caution,total_pick
-7,2026-10-16,App State at Coastal Carolina,smaller vs smaller,-1.5,1.2,2.7,Coastal Carolina,48.5,51.6,3.1,,Over
-7,2026-10-16,Memphis at Tulane,smaller vs smaller,-7.0,-4.7,2.3,Tulane,54.75,52.0,-2.7,,Under
-7,2026-10-16,Washington at Purdue,power vs power,3.25,-4.3,-7.5,Washington,49.75,54.9,5.2,Washington: rating down 6 vs last year,Over
-7,2026-10-17,Akron at Miami (OH),smaller vs smaller,9.75,14.9,5.2,Miami (OH),46.5,49.7,3.2,,Over
-7,2026-10-17,Alabama at Tennessee,power vs power,-7.5,-6.2,1.3,Tennessee,50.75,56.4,5.6,Alabama: rating up 9 vs last year,Over
-7,2026-10-17,Arizona State at Texas Tech,power vs power,15.75,19.1,3.4,Texas Tech,50.25,51.0,0.7,Arizona State: rating down 6 vs last year,Over
-7,2026-10-17,Arkansas State at Southern Miss,smaller vs smaller,-6.5,-1.2,5.3,Southern Miss,62.25,56.9,-5.4,Southern Miss: rating down 6 vs last year,Under
-7,2026-10-17,Arkansas at Vanderbilt,power vs power,6.0,7.8,1.8,Vanderbilt,49.75,58.0,8.2,Vanderbilt: rating down 11 vs last year,Over
-7,2026-10-17,Auburn at Georgia,power vs power,19.5,20.0,0.5,Georgia,49.75,49.9,0.2,Georgia: rating up 8 vs last year,Over
-7,2026-10-17,Ball State at Bowling Green,smaller vs smaller,6.5,11.6,5.1,Bowling Green,47.0,48.8,1.8,,Over
-7,2026-10-17,Charlotte at Temple,smaller vs smaller,20.75,20.5,-0.2,Charlotte,46.75,50.0,3.3,,Over
-7,2026-10-17,Cincinnati at West Virginia,power vs power,1.5,-2.7,-4.2,Cincinnati,63.5,60.5,-3.0,,Under
-7,2026-10-17,Florida Atlantic at Army,smaller vs smaller,2.25,10.6,8.4,Army,55.0,55.9,0.9,,Over
-7,2026-10-17,Florida State at Miami,power vs power,21.0,21.9,0.9,Miami,56.25,54.2,-2.0,,Under
-7,2026-10-17,Florida at Texas,power vs power,11.25,15.3,4.1,Texas,51.5,53.3,1.8,,Over
-7,2026-10-17,Fresno State at San Diego State,power vs power,-7.5,-11.4,-3.9,Fresno State,45.5,42.3,-3.2,San Diego State: rating down 11 vs last year,Under
-7,2026-10-17,Georgia State at James Madison,smaller vs smaller,10.5,17.2,6.7,James Madison,57.5,55.7,-1.8,Georgia State: rating up 12 vs last year,Under
-7,2026-10-17,Georgia Tech at Virginia Tech,power vs power,9.5,4.3,-5.2,Georgia Tech,56.5,56.1,-0.4,Virginia Tech: rating up 6 vs last year,Under
-7,2026-10-17,Kansas at Kansas State,power vs power,4.5,3.2,-1.3,Kansas,55.5,55.6,0.1,,Over
-7,2026-10-17,Kent State at South Florida,smaller vs smaller,20.75,25.9,5.1,South Florida,45.5,49.7,4.2,South Florida: rating down 7 vs last year,Over
-7,2026-10-17,Kentucky at Oklahoma,power vs power,6.5,7.4,0.9,Oklahoma,43.5,45.1,1.6,Kentucky: rating up 6 vs last year,Over
-7,2026-10-17,Louisiana Tech at UL Monroe,smaller vs smaller,-15.25,-14.0,1.2,UL Monroe,55.5,53.7,-1.8,UL Monroe: rating down 6 vs last year,Under
-7,2026-10-17,Louisville at Syracuse,power vs power,-15.5,-12.7,2.8,Syracuse,55.75,57.0,1.2,,Over
-7,2026-10-17,Massachusetts at Buffalo,smaller vs smaller,7.0,8.9,1.9,Buffalo,42.5,49.2,6.7,Massachusetts: rating up 13 vs last year,Over
-7,2026-10-17,Mississippi State at LSU,power vs power,15.75,12.6,-3.2,Mississippi State,57.25,58.4,1.2,LSU: rating up 10 vs last year; Mississippi State: rating up 9 vs last year,Over
-7,2026-10-17,Missouri at Ole Miss,power vs power,5.5,4.7,-0.8,Missouri,58.75,57.4,-1.3,,Under
-7,2026-10-17,Navy at UTSA,smaller vs smaller,6.75,10.0,3.3,UTSA,55.5,54.9,-0.6,Navy: rating down 7 vs last year,Under
-7,2026-10-17,Nebraska at Oregon,power vs power,7.0,2.4,-4.6,Nebraska,51.5,53.9,2.4,Oregon: rating down 9 vs last year; Nebraska: rating up 11 vs last year,Over
-7,2026-10-17,Nevada at North Dakota State,smaller vs smaller,14.5,13.0,-1.5,Nevada,42.5,45.7,3.2,,Over
-7,2026-10-17,New Mexico at Hawai'i,smaller vs smaller,-14.5,-15.8,-1.3,New Mexico,44.75,50.3,5.6,Hawai'i: rating down 8 vs last year; New Mexico: rating up 9 vs last year,Over
-7,2026-10-17,North Carolina at Duke,power vs power,3.0,9.6,6.6,Duke,46.75,50.0,3.3,North Carolina: rating up 8 vs last year,Over
-7,2026-10-17,Northern Illinois at Wyoming,smaller vs smaller,8.25,7.3,-1.0,Northern Illinois,41.5,39.4,-2.1,,Under
-7,2026-10-17,Northwestern at Michigan State,power vs power,-7.0,-9.5,-2.5,Northwestern,49.5,46.9,-2.6,Northwestern: rating up 10 vs last year,Under
-7,2026-10-17,Notre Dame at BYU,power vs power,-10.5,-6.8,3.7,BYU,46.75,50.7,4.0,,Over
-7,2026-10-17,Ohio State at Indiana,power vs power,-3.0,3.7,6.7,Indiana,50.25,50.9,0.6,,Over
-7,2026-10-17,Ohio at Sacramento State,smaller vs smaller,-15.5,-10.1,5.4,Sacramento State,47.5,49.6,2.1,Sacramento State: rating down 20 vs last year,Over
-7,2026-10-17,Oklahoma State at Houston,power vs power,4.5,14.0,9.5,Houston,62.5,55.1,-7.4,Oklahoma State: rating up 10 vs last year,Under
-7,2026-10-17,Penn State at Michigan,power vs power,6.25,1.9,-4.4,Penn State,42.25,44.4,2.1,,Over
-7,2026-10-17,Pittsburgh at Boston College,power vs power,-6.5,-7.8,-1.3,Pittsburgh,43.25,49.8,6.6,,Over
-7,2026-10-17,Rutgers at Maryland,power vs power,5.5,5.4,-0.1,Rutgers,56.25,56.6,0.3,Rutgers: rating down 8 vs last year,Over
-7,2026-10-17,San José State at UTEP,smaller vs smaller,-7.0,-13.8,-6.8,San José State,45.5,48.8,3.3,UTEP: rating down 10 vs last year,Over
-7,2026-10-17,TCU at Baylor,power vs power,5.75,7.6,1.9,Baylor,48.5,52.8,4.3,Baylor: rating up 6 vs last year,Over
-7,2026-10-17,Toledo at Eastern Michigan,smaller vs smaller,-6.5,-7.3,-0.8,Toledo,52.75,53.5,0.8,,Over
-7,2026-10-17,Troy at Louisiana,smaller vs smaller,3.0,3.4,0.4,Louisiana,49.25,50.6,1.3,,Over
-7,2026-10-17,Tulsa at Rice,smaller vs smaller,-4.0,-0.3,3.7,Rice,46.5,49.4,2.9,,Over
-7,2026-10-17,UNLV at Air Force,smaller vs smaller,1.25,-0.5,-1.8,UNLV,48.0,54.2,6.2,,Over
-7,2026-10-17,Utah at Colorado,power vs power,-14.5,-22.4,-7.9,Utah,49.25,47.5,-1.7,,Under
-7,2026-10-17,Virginia at SMU,power vs power,9.75,6.7,-3.0,Virginia,51.75,52.3,0.5,,Over
-7,2026-10-17,Wake Forest at California,power vs power,-10.0,-13.1,-3.1,Wake Forest,53.5,53.0,-0.5,Wake Forest: rating up 9 vs last year,Under
-7,2026-10-17,Washington State at Oregon State,power vs power,18.5,10.0,-8.5,Washington State,52.5,49.3,-3.2,Oregon State: rating up 15 vs last year,Under
-7,2026-10-17,Western Michigan at Central Michigan,smaller vs smaller,-6.75,-7.5,-0.8,Western Michigan,42.75,43.8,1.1,,Over
-7,2026-10-17,Wisconsin at UCLA,power vs power,2.5,3.9,1.4,UCLA,42.75,45.7,3.0,UCLA: rating up 15 vs last year; Wisconsin: rating up 9 vs last year,Over
-8,2026-10-23,BYU at UCF,power vs power,-8.5,-10.3,-1.8,BYU,45.5,45.4,-0.1,,Under
-8,2026-10-23,Duke at Virginia,power vs power,6.5,-1.0,-7.5,Duke,53.5,52.0,-1.5,,Under
-8,2026-10-23,Houston at Utah,power vs power,6.5,18.2,11.7,Utah,56.5,52.9,-3.6,,Under
-8,2026-10-23,Iowa State at Arizona,power vs power,10.0,7.1,-2.9,Iowa State,50.5,52.6,2.1,,Over
-8,2026-10-23,Iowa at Minnesota,power vs power,-4.5,-12.1,-7.6,Iowa,42.5,41.5,-1.0,,Under
-8,2026-10-23,Virginia Tech at Clemson,power vs power,-1.5,3.3,4.8,Clemson,49.5,50.0,0.5,Clemson: rating down 7 vs last year; Virginia Tech: rating up 6 vs last year,Over
-8,2026-10-24,Indiana at Michigan,power vs power,-9.5,-11.9,-2.4,Indiana,44.5,45.7,1.2,,Over
-8,2026-10-24,LSU at Auburn,power vs power,-6.5,-5.3,1.2,Auburn,50.5,46.9,-3.6,LSU: rating up 10 vs last year,Under
-8,2026-10-24,North Dakota State at New Mexico,smaller vs smaller,4.5,5.9,1.4,New Mexico,46.5,47.2,0.7,New Mexico: rating up 9 vs last year,Over
-8,2026-10-24,Ole Miss at Texas,power vs power,6.5,7.8,1.3,Texas,53.5,55.3,1.8,,Over
-8,2026-10-24,Pittsburgh at Miami,power vs power,23.5,20.8,-2.7,Pittsburgh,53.5,52.0,-1.5,,Under
-8,2026-10-24,Tennessee at South Carolina,power vs power,-1.5,-0.4,1.1,South Carolina,51.5,55.3,3.8,,Over
-8,2026-10-24,Texas A&M at Alabama,power vs power,15.5,17.7,2.2,Alabama,53.5,53.4,-0.1,Alabama: rating up 9 vs last year,Under
-8,2026-10-24,USC at Wisconsin,power vs power,-1.5,2.6,4.1,Wisconsin,52.5,52.4,-0.1,Wisconsin: rating up 9 vs last year,Under
-8,2026-10-24,Vanderbilt at Kentucky,power vs power,9.5,7.9,-1.6,Vanderbilt,52.5,55.9,3.4,Kentucky: rating up 6 vs last year; Vanderbilt: rating down 11 vs last year,Over
+week,date,matchup,type,line_home_by,open_home_by,open_total,proj_home_by,spread_edge,spread_pick,line_total,proj_total,total_edge,caution,total_pick
+7,2026-10-16,App State at Coastal Carolina,smaller vs smaller,-1.5,-1.25,51.75,1.2,2.7,Coastal Carolina,48.5,51.6,3.1,,Over
+7,2026-10-16,Memphis at Tulane,smaller vs smaller,-7.0,-7.0,53.5,-4.7,2.3,Tulane,54.75,52.0,-2.7,,Under
+7,2026-10-16,Washington at Purdue,power vs power,3.25,2.75,52.0,-4.3,-7.5,Washington,49.75,54.9,5.2,Washington: rating down 6 vs last year,Over
+7,2026-10-17,Akron at Miami (OH),smaller vs smaller,9.75,9.75,46.75,14.9,5.2,Miami (OH),46.5,49.7,3.2,,Over
+7,2026-10-17,Alabama at Tennessee,power vs power,-7.5,-4.25,55.0,-6.2,1.3,Tennessee,50.75,56.4,5.6,Alabama: rating up 9 vs last year,Over
+7,2026-10-17,Arizona State at Texas Tech,power vs power,15.75,13.25,50.5,19.1,3.4,Texas Tech,50.25,51.0,0.7,Arizona State: rating down 6 vs last year,Over
+7,2026-10-17,Arkansas State at Southern Miss,smaller vs smaller,-6.5,-7.0,58.5,-1.2,5.3,Southern Miss,62.25,56.9,-5.4,Southern Miss: rating down 6 vs last year,Under
+7,2026-10-17,Arkansas at Vanderbilt,power vs power,6.0,6.5,50.5,7.8,1.8,Vanderbilt,49.75,58.0,8.2,Vanderbilt: rating down 11 vs last year,Over
+7,2026-10-17,Auburn at Georgia,power vs power,19.5,17.5,51.5,20.0,0.5,Georgia,49.75,49.9,0.2,Georgia: rating up 8 vs last year,Over
+7,2026-10-17,Ball State at Bowling Green,smaller vs smaller,6.5,7.75,44.75,11.6,5.1,Bowling Green,47.0,48.8,1.8,,Over
+7,2026-10-17,Charlotte at Temple,smaller vs smaller,20.75,23.25,50.0,20.5,-0.2,Charlotte,46.75,50.0,3.3,,Over
+7,2026-10-17,Cincinnati at West Virginia,power vs power,1.5,1.5,61.75,-2.7,-4.2,Cincinnati,63.5,60.5,-3.0,,Under
+7,2026-10-17,Florida Atlantic at Army,smaller vs smaller,2.25,3.0,58.0,10.6,8.4,Army,55.0,55.9,0.9,,Over
+7,2026-10-17,Florida State at Miami,power vs power,21.0,18.75,55.0,21.9,0.9,Miami,56.25,54.2,-2.0,,Under
+7,2026-10-17,Florida at Texas,power vs power,11.25,9.75,53.0,15.3,4.1,Texas,51.5,53.3,1.8,,Over
+7,2026-10-17,Fresno State at San Diego State,power vs power,-7.5,-8.25,44.25,-11.4,-3.9,Fresno State,45.5,42.3,-3.2,San Diego State: rating down 11 vs last year,Under
+7,2026-10-17,Georgia State at James Madison,smaller vs smaller,10.5,12.25,56.25,17.2,6.7,James Madison,57.5,55.7,-1.8,Georgia State: rating up 12 vs last year,Under
+7,2026-10-17,Georgia Tech at Virginia Tech,power vs power,9.5,9.75,55.5,4.3,-5.2,Georgia Tech,56.5,56.1,-0.4,Virginia Tech: rating up 6 vs last year,Under
+7,2026-10-17,Kansas at Kansas State,power vs power,4.5,7.0,55.0,3.2,-1.3,Kansas,55.5,55.6,0.1,,Over
+7,2026-10-17,Kent State at South Florida,smaller vs smaller,20.75,19.25,48.0,25.9,5.1,South Florida,45.5,49.7,4.2,South Florida: rating down 7 vs last year,Over
+7,2026-10-17,Kentucky at Oklahoma,power vs power,6.5,6.75,42.5,7.4,0.9,Oklahoma,43.5,45.1,1.6,Kentucky: rating up 6 vs last year,Over
+7,2026-10-17,Louisiana Tech at UL Monroe,smaller vs smaller,-15.25,-14.5,53.5,-14.0,1.2,UL Monroe,55.5,53.7,-1.8,UL Monroe: rating down 6 vs last year,Under
+7,2026-10-17,Louisville at Syracuse,power vs power,-15.5,-11.75,56.0,-12.7,2.8,Syracuse,55.75,57.0,1.2,,Over
+7,2026-10-17,Massachusetts at Buffalo,smaller vs smaller,7.0,3.25,46.25,8.9,1.9,Buffalo,42.5,49.2,6.7,Massachusetts: rating up 13 vs last year,Over
+7,2026-10-17,Mississippi State at LSU,power vs power,15.75,11.5,59.25,12.6,-3.2,Mississippi State,57.25,58.4,1.2,LSU: rating up 10 vs last year; Mississippi State: rating up 9 vs last year,Over
+7,2026-10-17,Missouri at Ole Miss,power vs power,5.5,6.0,58.5,4.7,-0.8,Missouri,58.75,57.4,-1.3,,Under
+7,2026-10-17,Navy at UTSA,smaller vs smaller,6.75,6.75,55.0,10.0,3.3,UTSA,55.5,54.9,-0.6,Navy: rating down 7 vs last year,Under
+7,2026-10-17,Nebraska at Oregon,power vs power,7.0,14.0,52.0,2.4,-4.6,Nebraska,51.5,53.9,2.4,Oregon: rating down 9 vs last year; Nebraska: rating up 11 vs last year,Over
+7,2026-10-17,Nevada at North Dakota State,smaller vs smaller,14.5,15.0,46.25,13.0,-1.5,Nevada,42.5,45.7,3.2,,Over
+7,2026-10-17,New Mexico at Hawai'i,smaller vs smaller,-14.5,-14.75,47.5,-15.8,-1.3,New Mexico,44.75,50.3,5.6,Hawai'i: rating down 8 vs last year; New Mexico: rating up 9 vs last year,Over
+7,2026-10-17,North Carolina at Duke,power vs power,3.0,4.0,51.0,9.6,6.6,Duke,46.75,50.0,3.3,North Carolina: rating up 8 vs last year,Over
+7,2026-10-17,Northern Illinois at Wyoming,smaller vs smaller,8.25,7.25,39.25,7.3,-1.0,Northern Illinois,41.5,39.4,-2.1,,Under
+7,2026-10-17,Northwestern at Michigan State,power vs power,-7.0,-8.5,48.0,-9.5,-2.5,Northwestern,49.5,46.9,-2.6,Northwestern: rating up 10 vs last year,Under
+7,2026-10-17,Notre Dame at BYU,power vs power,-10.5,-10.5,51.25,-6.8,3.7,BYU,46.75,50.7,4.0,,Over
+7,2026-10-17,Ohio State at Indiana,power vs power,-3.0,-2.75,49.5,3.7,6.7,Indiana,50.25,50.9,0.6,,Over
+7,2026-10-17,Ohio at Sacramento State,smaller vs smaller,-15.5,-14.0,49.5,-10.1,5.4,Sacramento State,47.5,49.6,2.1,Sacramento State: rating down 20 vs last year,Over
+7,2026-10-17,Oklahoma State at Houston,power vs power,4.5,3.75,59.25,14.0,9.5,Houston,62.5,55.1,-7.4,Oklahoma State: rating up 10 vs last year,Under
+7,2026-10-17,Penn State at Michigan,power vs power,6.25,6.25,47.0,1.9,-4.4,Penn State,42.25,44.4,2.1,,Over
+7,2026-10-17,Pittsburgh at Boston College,power vs power,-6.5,-6.5,45.25,-7.8,-1.3,Pittsburgh,43.25,49.8,6.6,,Over
+7,2026-10-17,Rutgers at Maryland,power vs power,5.5,4.5,58.75,5.4,-0.1,Rutgers,56.25,56.6,0.3,Rutgers: rating down 8 vs last year,Over
+7,2026-10-17,San José State at UTEP,smaller vs smaller,-7.0,-9.5,51.25,-13.8,-6.8,San José State,45.5,48.8,3.3,UTEP: rating down 10 vs last year,Over
+7,2026-10-17,TCU at Baylor,power vs power,5.75,6.5,50.25,7.6,1.9,Baylor,48.5,52.8,4.3,Baylor: rating up 6 vs last year,Over
+7,2026-10-17,Toledo at Eastern Michigan,smaller vs smaller,-6.5,-5.75,52.75,-7.3,-0.8,Toledo,52.75,53.5,0.8,,Over
+7,2026-10-17,Troy at Louisiana,smaller vs smaller,3.0,4.0,48.5,3.4,0.4,Louisiana,49.25,50.6,1.3,,Over
+7,2026-10-17,Tulsa at Rice,smaller vs smaller,-4.0,-3.5,46.25,-0.3,3.7,Rice,46.5,49.4,2.9,,Over
+7,2026-10-17,UNLV at Air Force,smaller vs smaller,1.25,-2.0,47.75,-0.5,-1.8,UNLV,48.0,54.2,6.2,,Over
+7,2026-10-17,Utah at Colorado,power vs power,-14.5,-16.5,49.25,-22.4,-7.9,Utah,49.25,47.5,-1.7,,Under
+7,2026-10-17,Virginia at SMU,power vs power,9.75,8.25,53.25,6.7,-3.0,Virginia,51.75,52.3,0.5,,Over
+7,2026-10-17,Wake Forest at California,power vs power,-10.0,-8.75,53.5,-13.1,-3.1,Wake Forest,53.5,53.0,-0.5,Wake Forest: rating up 9 vs last year,Under
+7,2026-10-17,Washington State at Oregon State,power vs power,18.5,17.25,52.5,10.0,-8.5,Washington State,52.5,49.3,-3.2,Oregon State: rating up 15 vs last year,Under
+7,2026-10-17,Western Michigan at Central Michigan,smaller vs smaller,-6.75,-7.0,42.75,-7.5,-0.8,Western Michigan,42.75,43.8,1.1,,Over
+7,2026-10-17,Wisconsin at UCLA,power vs power,2.5,3.25,48.0,3.9,1.4,UCLA,42.75,45.7,3.0,UCLA: rating up 15 vs last year; Wisconsin: rating up 9 vs last year,Over
+8,2026-10-23,BYU at UCF,power vs power,-8.5,-9.5,45.5,-10.3,-1.8,BYU,45.5,45.4,-0.1,,Under
+8,2026-10-23,Duke at Virginia,power vs power,6.5,6.5,53.5,-1.0,-7.5,Duke,53.5,52.0,-1.5,,Under
+8,2026-10-23,Houston at Utah,power vs power,6.5,6.5,50.5,18.2,11.7,Utah,56.5,52.9,-3.6,,Under
+8,2026-10-23,Iowa State at Arizona,power vs power,10.0,10.0,50.5,7.1,-2.9,Iowa State,50.5,52.6,2.1,,Over
+8,2026-10-23,Iowa at Minnesota,power vs power,-4.5,-4.5,42.5,-12.1,-7.6,Iowa,42.5,41.5,-1.0,,Under
+8,2026-10-23,Virginia Tech at Clemson,power vs power,-1.5,-1.5,49.5,3.3,4.8,Clemson,49.5,50.0,0.5,Clemson: rating down 7 vs last year; Virginia Tech: rating up 6 vs last year,Over
+8,2026-10-24,Indiana at Michigan,power vs power,-9.5,-6.0,52.5,-11.9,-2.4,Indiana,44.5,45.7,1.2,,Over
+8,2026-10-24,LSU at Auburn,power vs power,-6.5,-6.5,50.5,-5.3,1.2,Auburn,50.5,46.9,-3.6,LSU: rating up 10 vs last year,Under
+8,2026-10-24,North Dakota State at New Mexico,smaller vs smaller,4.5,3.5,46.5,5.9,1.4,New Mexico,46.5,47.2,0.7,New Mexico: rating up 9 vs last year,Over
+8,2026-10-24,Ole Miss at Texas,power vs power,6.5,8.5,54.5,7.8,1.3,Texas,53.5,55.3,1.8,,Over
+8,2026-10-24,Pittsburgh at Miami,power vs power,23.5,23.5,53.5,20.8,-2.7,Pittsburgh,53.5,52.0,-1.5,,Under
+8,2026-10-24,Tennessee at South Carolina,power vs power,-1.5,-2.5,51.5,-0.4,1.1,South Carolina,51.5,55.3,3.8,,Over
+8,2026-10-24,Texas A&M at Alabama,power vs power,15.5,2.5,54.5,17.7,2.2,Alabama,53.5,53.4,-0.1,Alabama: rating up 9 vs last year,Under
+8,2026-10-24,USC at Wisconsin,power vs power,-1.5,-1.5,52.5,2.6,4.1,Wisconsin,52.5,52.4,-0.1,Wisconsin: rating up 9 vs last year,Under
+8,2026-10-24,Vanderbilt at Kentucky,power vs power,9.5,9.5,52.5,7.9,-1.6,Vanderbilt,52.5,55.9,3.4,Kentucky: rating up 6 vs last year; Vanderbilt: rating down 11 vs last year,Over
