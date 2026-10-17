@@ -1,6 +1,6 @@
 checked_utc,level,check,detail
 2026-10-17 01:10,WARN,Missing lines,1 of 14 games have no market spread (SEA@DEN).
-2026-10-17 01:10,INFO,Injuries,28 of 28 teams on this slate have official injury report entries.
+2026-10-17 01:10,WARN,Injuries,Only 2 of 28 teams on this slate have injury report entries; the report may be incomplete.
 2026-10-17 01:10,INFO,Manual injury overrides,PHI Jalen Hurts Out
 2026-10-17 01:10,WARN,Quarterback,"TB: Baker Mayfield (auto: Baker Mayfield is back from injury (missed 2), J.Daniels was the fill-in (rated from his games)). Confirm who starts."
 2026-10-17 01:10,WARN,Quarterback,"WAS: Marcus Mariota (auto: Marcus Mariota is back from injury (missed 1), J.Daniels was the fill-in (rated from his games)). Confirm who starts."

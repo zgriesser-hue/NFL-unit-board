@@ -56,7 +56,7 @@ else:
     if pool is None or pool.empty:
         add("WARN", "Injuries", "No injury data on file for this board.")
     else:
-        rs = pool["report_status"].astype(str).str.strip()
+        rs = pool["report_status"].fillna("").astype(str).str.strip()
         rep = pool[(rs != "") & (rs != "nan") & (rs != "Est. from practice")]
         est = pool[rs == "Est. from practice"]
         teams = set(ub["home_team"]) | set(ub["away_team"])
