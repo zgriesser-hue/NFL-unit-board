@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "0 22 * * 3"   # Wednesday 22:00 UTC (about 6pm ET): board after the first injury report
     - cron: "0 22 * * 5"   # Friday 22:00 UTC: board after the final injury report
+    - cron: "0 15 * * 6"   # Saturday 15:00 UTC (about 11am ET): rerun once the final game designations have reached the data
     - cron: "0 14 * * 2"   # Tuesday 14:00 UTC: grade last week's games
     - cron: "7 10 * * 1"   # Monday 10:07 UTC (about 6am ET): totals board for NEXT week against the early lines
   workflow_dispatch:        # lets you run it by hand from the Actions tab

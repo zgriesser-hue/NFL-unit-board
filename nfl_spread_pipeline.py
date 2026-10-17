@@ -52,6 +52,9 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY")   # optional free-tier key: captur
 FIRST_SEASON, LAST_SEASON, PBP_FROM = 2020, 2026, 2019
 M, LAM, K_QB = 12, 0.5, 150          # prior = M games of last season's average x LAM; QB shrinkage (dropbacks)
 TEST_SEASONS = [2023, 2024, 2025]
+# When a team's official game designations (Out / Doubtful / Questionable) are not in the data yet but its practice report is, estimate each player's
+# chance of missing the game from practice alone. Share of regular contributors who missed the game, 2022-25, by practice status.
+PRACTICE_ONLY_W = {"Did Not Participate In Practice": 0.74, "Limited Participation in Practice": 0.29, "Full Participation in Practice": 0.06}
 INJ_PRACTICE = os.environ.get("INJ_PRACTICE", "") == "1"   # opt-in: weight Questionable players by practice participation (set "1"); see injury_burden
 CONT_USE = os.environ.get("CONT_USE", "")   # opt-in roster-continuity features, e.g. "cont_cov" or "cont_cov,cont_skill" (default: off; tested, did not help overall)
 QB_REPLACEMENT_PRIOR = True          # True = a QB with little tape starts near what a new QB usually produces, not near average
@@ -390,6 +393,15 @@ def build_injury_burden(variant=None):
               "Did Not Participate In Practice": 0.58}
         qm = inj["report_status"].eq("Questionable")
         inj.loc[qm, "w"] = inj.loc[qm, "practice_status"].map(pw).fillna(0.25)
+    if "practice_status" in inj:
+        _has = inj.groupby(["season", "week", "team"])["report_status"].transform(lambda x: x.notna().any())
+        _est = inj["practice_status"].map(PRACTICE_ONLY_W)
+        _use = (~_has) & _est.notna()
+        inj.loc[_use, "w"] = _est[_use]
+        if _use.any():
+            _cur = inj[_use]
+            print(f"    practice-only estimate used for {_cur.groupby(['season', 'week', 'team']).ngroups} team-weeks whose game designations are not in the data yet "
+                  f"(latest: {int(_cur['season'].max())} week {int(_cur['week'].max())})")
     inj = inj[inj["w"] > 0].sort_values("order")
     mm = pd.merge_asof(inj, snap[["order", "name", "team", "roll3"]].sort_values("order"),
                        on="order", by=["name", "team"], direction="backward", allow_exact_matches=False)
@@ -1523,6 +1535,12 @@ try:
     if "date_modified" in _ij:
         _ij = _ij.sort_values("date_modified")
     _ij = _ij.drop_duplicates(["team", "key"], keep="last")
+    if "practice_status" in _ij:                                   # same fallback as the burden table: teams whose designations are not out yet
+        _hs = _ij.groupby("team")["report_status"].transform(lambda x: x.notna().any())
+        _es = _ij["practice_status"].map(PRACTICE_ONLY_W)
+        _u = (~_hs) & _es.notna()
+        _ij.loc[_u, "w"] = _es[_u]
+        _ij["report_status"] = np.where(_u, "Est. from practice", _ij["report_status"])
     POOL = POOL.merge(_ij[["team", "key", "w", "report_status", "practice_status"]], on=["team", "key"], how="left")
     POOL["w_now"] = POOL.pop("w").fillna(0.0)
     POOL["report_status"] = POOL["report_status"].fillna("")
