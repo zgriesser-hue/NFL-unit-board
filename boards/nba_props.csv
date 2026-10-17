@@ -128,3 +128,132 @@ snap_time,book,player,market,line,over_price,under_price,home,away,event_id,comm
 2026-10-16T23:07Z,draftkings,De'Aaron Fox,player_points,15.5,-107,-119.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00Z
 2026-10-16T23:07Z,draftkings,Jalen Williams,player_points,17.5,-103,-124.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00Z
 2026-10-16T23:07Z,draftkings,Stephon Castle,player_points,15.5,-123,-104.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00Z
+2026-10-17T22:46Z,draftkings,Jalen Duren,player_points,17.5,-108,-118.0,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.0000000Z
+2026-10-17T22:46Z,draftkings,Jalen Duren,player_rebounds,9.5,-114,-115.0,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.0000000Z
+2026-10-17T22:46Z,draftkings,Jayson Tatum,player_points,26.5,-119,-107.0,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.0000000Z
+2026-10-17T22:46Z,draftkings,Paul George,player_points,15.5,-120,-106.0,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.0000000Z
+2026-10-17T22:46Z,fanduel,Ausar Thompson,player_assists,0.0,116,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Ausar Thompson,player_points,0.0,1300,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Ausar Thompson,player_rebounds,0.0,162,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Cade Cunningham,player_assists,0.0,-1100,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Cade Cunningham,player_points,0.0,-104,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Cade Cunningham,player_rebounds,0.0,-430,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Derrick White,player_assists,0.0,-166,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Derrick White,player_points,0.0,-770,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Derrick White,player_rebounds,0.0,-111,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Duncan Robinson,player_points,0.0,280,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Duren,player_assists,0.0,520,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Duren,player_points,0.0,138,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Duren,player_rebounds,0.0,-330,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jayson Tatum,player_assists,0.0,-590,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jayson Tatum,player_points,0.0,-3500,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jayson Tatum,player_rebounds,0.0,-1000,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Paul George,player_assists,0.0,630,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Paul George,player_points,0.0,210,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Paul George,player_rebounds,0.0,255,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Payton Pritchard,player_assists,0.0,255,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Payton Pritchard,player_points,0.0,240,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Payton Pritchard,player_rebounds,0.0,900,,Detroit Pistons,Boston Celtics,249f6ad5667cc3b1,2026-10-20T19:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Brunson,player_assists,0.0,-1400,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Brunson,player_points,0.0,-590,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Brunson,player_rebounds,0.0,2000,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jaylen Brown,player_assists,0.0,420,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jaylen Brown,player_points,0.0,-590,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Jaylen Brown,player_rebounds,0.0,-130,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Joel Embiid,player_assists,0.0,600,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Joel Embiid,player_points,0.0,-7000,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Joel Embiid,player_rebounds,0.0,-400,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Josh Hart,player_assists,0.0,-186,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Josh Hart,player_points,0.0,-200,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Josh Hart,player_rebounds,0.0,-430,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Karl-Anthony Towns,player_assists,0.0,230,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Karl-Anthony Towns,player_points,0.0,1060,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Karl-Anthony Towns,player_rebounds,0.0,-3500,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,LeBron James,player_assists,0.0,-2500,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,LeBron James,player_points,0.0,220,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,LeBron James,player_rebounds,0.0,-800,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Mikal Bridges,player_assists,0.0,630,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Mikal Bridges,player_points,0.0,-340,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Mikal Bridges,player_rebounds,0.0,-115,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,OG Anunoby,player_assists,0.0,500,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,OG Anunoby,player_points,0.0,-192,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,OG Anunoby,player_rebounds,0.0,420,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Tyrese Maxey,player_assists,0.0,176,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Tyrese Maxey,player_points,0.0,186,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,Tyrese Maxey,player_rebounds,0.0,1500,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,VJ Edgecombe,player_assists,0.0,1000,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,VJ Edgecombe,player_points,0.0,265,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,fanduel,VJ Edgecombe,player_rebounds,0.0,162,,New York Knicks,Philadelphia 76ers,bf32df940516e8a3,2026-10-20T23:00:00.000Z
+2026-10-17T22:46Z,draftkings,Chet Holmgren,player_assists,1.5,148,-196.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Chet Holmgren,player_points,13.5,-129,101.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Chet Holmgren,player_rebounds,8.5,-106,-124.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,De'Aaron Fox,player_assists,5.5,-107,-122.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,De'Aaron Fox,player_points,14.5,-117,-109.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,De'Aaron Fox,player_rebounds,3.5,102,-135.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Stephon Castle,player_assists,6.5,105,-138.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Stephon Castle,player_points,15.5,-118,-108.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Victor Wembanyama,player_assists,2.5,-168,127.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,draftkings,Victor Wembanyama,player_points,25.5,-113,-113.0,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.0000000Z
+2026-10-17T22:46Z,fanduel,Chet Holmgren,player_points,0.0,-350,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Chet Holmgren,player_rebounds,0.0,-500,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,De'Aaron Fox,player_assists,0.0,-520,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,De'Aaron Fox,player_points,0.0,-138,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,De'Aaron Fox,player_rebounds,0.0,118,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Williams,player_assists,0.0,190,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Williams,player_points,0.0,480,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Jalen Williams,player_rebounds,0.0,800,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Shai Gilgeous-Alexander,player_assists,0.0,-1450,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Shai Gilgeous-Alexander,player_points,0.0,-370,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Shai Gilgeous-Alexander,player_rebounds,0.0,1060,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Stephon Castle,player_assists,0.0,-850,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Stephon Castle,player_points,0.0,1700,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Stephon Castle,player_rebounds,0.0,-400,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Victor Wembanyama,player_assists,0.0,150,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Victor Wembanyama,player_points,0.0,180,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,fanduel,Victor Wembanyama,player_rebounds,0.0,-720,,San Antonio Spurs,Oklahoma City Thunder,3a5c10c1a3bfc612,2026-10-21T01:30:00.000Z
+2026-10-17T22:46Z,draftkings,Anthony Davis,player_points,20.5,-114,-112.0,Washington Wizards,Milwaukee Bucks,b7d7b4d9550bf5dc,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Anthony Davis,player_rebounds,11.5,-103,-128.0,Washington Wizards,Milwaukee Bucks,b7d7b4d9550bf5dc,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Franz Wagner,player_assists,4.5,102,-135.0,Orlando Magic,Atlanta Hawks,07bf528b67a70a96,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Franz Wagner,player_points,21.5,-102,-125.0,Orlando Magic,Atlanta Hawks,07bf528b67a70a96,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Franz Wagner,player_rebounds,5.5,-110,-119.0,Orlando Magic,Atlanta Hawks,07bf528b67a70a96,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Paolo Banchero,player_assists,5.5,108,-142.0,Orlando Magic,Atlanta Hawks,07bf528b67a70a96,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Paolo Banchero,player_rebounds,8.5,-125,-105.0,Orlando Magic,Atlanta Hawks,07bf528b67a70a96,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Trae Young,player_points,18.5,-120,-106.0,Washington Wizards,Milwaukee Bucks,b7d7b4d9550bf5dc,2026-10-21T23:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Anthony Edwards,player_assists,3.5,-124,-106.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Anthony Edwards,player_points,27.5,-112,-114.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Anthony Edwards,player_rebounds,5.5,115,-152.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Bam Adebayo,player_assists,3.5,125,-165.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Bam Adebayo,player_rebounds,9.5,-125,-105.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Giannis Antetokounmpo,player_points,27.5,-111,-114.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Giannis Antetokounmpo,player_rebounds,10.5,-124,-106.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,LaMelo Ball,player_assists,7.5,-113,-117.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,LaMelo Ball,player_points,19.5,-109,-117.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,LaMelo Ball,player_rebounds,4.5,-143,109.0,Miami Heat,Minnesota Timberwolves,aa5a82f089e00ee1,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Norman Powell,player_points,18.5,-103,-124.0,Toronto Raptors,Chicago Bulls,9a897e734e33a1aa,2026-10-21T23:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Dejounte Murray,player_assists,6.5,-125,-105.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Dejounte Murray,player_points,16.5,-126,-101.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Dejounte Murray,player_rebounds,5.5,-135,103.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Ivica Zubac,player_assists,2.5,118,-155.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Ivica Zubac,player_points,14.5,-102,-125.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Ivica Zubac,player_rebounds,11.5,-109,-121.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Pascal Siakam,player_assists,3.5,124,-164.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Pascal Siakam,player_points,20.5,-115,-111.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Pascal Siakam,player_rebounds,5.5,-145,110.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Trey Murphy III,player_points,20.5,-103,-124.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Trey Murphy III,player_rebounds,4.5,-157,119.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Tyrese Haliburton,player_rebounds,3.5,-103,-128.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Zion Williamson,player_points,20.5,-115,-111.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Zion Williamson,player_rebounds,5.5,-134,101.0,New Orleans Pelicans,Indiana Pacers,3d99b706703816c9,2026-10-22T00:10:00.0000000Z
+2026-10-17T22:46Z,draftkings,Alperen Sengun,player_points,18.5,-118,-108.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Amen Thompson,player_points,16.5,-118,-108.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Amen Thompson,player_rebounds,8.5,-107,-123.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Cooper Flagg,player_points,20.5,-124,-103.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Cooper Flagg,player_rebounds,6.5,-117,-112.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Kevin Durant,player_assists,3.5,-141,107.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Kevin Durant,player_points,24.5,-110,-116.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Kevin Durant,player_rebounds,5.5,108,-143.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Kyrie Irving,player_points,19.5,-120,-106.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Kyrie Irving,player_rebounds,3.5,113,-149.0,Houston Rockets,Dallas Mavericks,4301979c03812404,2026-10-22T00:40:00.0000000Z
+2026-10-17T22:46Z,draftkings,Austin Reaves,player_rebounds,4.5,109,-144.0,Los Angeles Lakers,Golden State Warriors,b6e84678468fc006,2026-10-22T02:10:00Z
+2026-10-17T22:46Z,draftkings,Luka Doncic,player_rebounds,7.5,-101,-130.0,Los Angeles Lakers,Golden State Warriors,b6e84678468fc006,2026-10-22T02:10:00Z
+2026-10-17T22:46Z,draftkings,Stephen Curry,player_rebounds,3.5,-120,-110.0,Los Angeles Lakers,Golden State Warriors,b6e84678468fc006,2026-10-22T02:10:00Z
