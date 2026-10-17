@@ -56,15 +56,21 @@ else:
     if pool is None or pool.empty:
         add("WARN", "Injuries", "No injury data on file for this board.")
     else:
-        rep = pool[pool["report_status"].notna() & (pool["report_status"].astype(str).str.strip() != "")]
+        rs = pool["report_status"].astype(str).str.strip()
+        rep = pool[(rs != "") & (rs != "nan") & (rs != "Est. from practice")]
+        est = pool[rs == "Est. from practice"]
         teams = set(ub["home_team"]) | set(ub["away_team"])
         with_rep = set(rep["team"]) & teams
-        if not len(with_rep):
+        with_est = (set(est["team"]) & teams) - with_rep
+        if with_est:
+            add("WARN", "Injuries", f"Official game designations (Out/Doubtful/Questionable) are not in the data yet for {len(with_est)} of {len(teams)} teams; "
+                f"their injury effect is estimated from practice participation only (rerun later for the official statuses).")
+        elif not len(with_rep):
             add("WARN", "Injuries", "No team on this slate has an injury report yet, so injury effects are zero (normal on Monday; rerun after Wednesday's report).")
         elif len(with_rep) < len(teams) / 2:
-            add("WARN", "Injuries", f"Only {len(with_rep)} of {len(teams)} teams on this slate have injury report entries; the report may be incomplete or not out yet.")
+            add("WARN", "Injuries", f"Only {len(with_rep)} of {len(teams)} teams on this slate have injury report entries; the report may be incomplete.")
         else:
-            add("INFO", "Injuries", f"{len(with_rep)} of {len(teams)} teams on this slate have injury report entries.")
+            add("INFO", "Injuries", f"{len(with_rep)} of {len(teams)} teams on this slate have official injury report entries.")
         ov = pool[pool["override"].notna()] if "override" in pool else pool.iloc[0:0]
         if len(ov):
             add("INFO", "Manual injury overrides", "; ".join((ov["team"] + " " + ov["name"] + " " + ov["override"].astype(str)).head(8)))
